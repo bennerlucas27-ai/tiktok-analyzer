@@ -86,7 +86,13 @@ Antworte NUR in diesem JSON Format ohne weitere Erklärung:
   ]
 }}
 
-Nur echte, existierende TikTok Accounts vorschlagen."""
+Nur echte, existierende und AKTIVE TikTok Accounts vorschlagen.
+WICHTIG: 
+- Nur Accounts die in den letzten 30 Tagen gepostet haben
+- Top Performer müssen mindestens 100.000 Follower haben
+- Ähnliche Accounts mindestens 10.000 Follower
+- Keine privaten Accounts
+- Bevorzuge bekannte deutschsprachige Accounts"""
 
     message = client.messages.create(
         model="claude-sonnet-4-6",
@@ -345,12 +351,12 @@ elif st.session_state.step == 3:
             # Prüfe ob Account aktiv ist (Video in letzten 90 Tagen)
             from datetime import datetime, timezone
             now = datetime.now(timezone.utc)
-            recent = [v for v in newest if v["datum"] and (now - datetime.fromisoformat(v["datum"].replace("Z", "+00:00"))).days <= 90]
+            recent = [v for v in newest if v["datum"] and (now - datetime.fromisoformat(v["datum"].replace("Z", "+00:00"))).days <= 30]
             if len(newest) == 0:
                 status_text.text(f"⚠️ @{acc} ist privat oder nicht gefunden — wird übersprungen")
                 time.sleep(2)
             elif len(recent) == 0:
-                status_text.text(f"⚠️ @{acc} ist inaktiv (kein Video in 90 Tagen) — wird übersprungen")
+                status_text.text(f"⚠️ @{acc} ist inaktiv (kein Video in 30 Tagen) — wird übersprungen")
                 time.sleep(2)
             else:
                 comparison_data[acc] = extracted
