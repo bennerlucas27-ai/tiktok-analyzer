@@ -298,27 +298,30 @@ elif st.session_state.step == 2:
     with col1:
         st.markdown("#### 🏆 Top Performer")
         for i, acc in enumerate(top_accounts):
+            edited = st.text_input(f"✏️ Username", value=acc["username"], key=f"edit_{acc['username']}_{i}")
             checked = st.checkbox(f"Einschließen", key=f"check_{acc['username']}_{i}", value=True)
-            edited = st.text_input("Username", value=acc["username"], key=f"edit_{acc['username']}_{i}", label_visibility="collapsed")
             st.caption(acc["grund"])
+            st.divider()
             if checked and edited:
                 selected.append(edited)
 
     with col2:
         st.markdown("#### 🔄 Ähnliche Accounts")
         for i, acc in enumerate(similar_accounts):
+            edited = st.text_input(f"✏️ Username", value=acc["username"], key=f"edit_{acc['username']}_{i}_s")
             checked = st.checkbox(f"Einschließen", key=f"check_{acc['username']}_{i}_s", value=True)
-            edited = st.text_input("Username", value=acc["username"], key=f"edit_{acc['username']}_{i}_s", label_visibility="collapsed")
             st.caption(acc["grund"])
+            st.divider()
             if checked and edited:
                 selected.append(edited)
 
     with col3:
         st.markdown("#### 📉 Kleinere Accounts")
         for i, acc in enumerate(smaller_accounts):
+            edited = st.text_input(f"✏️ Username", value=acc["username"], key=f"edit_{acc['username']}_{i}_k")
             checked = st.checkbox(f"Einschließen", key=f"check_{acc['username']}_{i}_k", value=False)
-            edited = st.text_input("Username", value=acc["username"], key=f"edit_{acc['username']}_{i}_k", label_visibility="collapsed")
             st.caption(acc["grund"])
+            st.divider()
             if checked and edited:
                 selected.append(edited)
 
