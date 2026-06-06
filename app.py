@@ -14,52 +14,92 @@ APIFY_API_TOKEN = os.getenv("APIFY_API_TOKEN")
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
 
-def get_tiktok_data(username):
-    # Job starten
+def scrape_tiktok_account(username):
     start_url = "https://api.apify.com/v2/acts/clockworks~tiktok-profile-scraper/runs"
-
     payload = {
         "profiles": [username],
         "resultsPerPage": 30,
         "shouldDownloadVideos": False,
         "shouldDownloadCovers": False,
     }
-
     params = {"token": APIFY_API_TOKEN}
 
-    with st.spinner("TikTok Scraper wird gestartet..."):
-        response = requests.post(start_url, json=payload, params=params, timeout=30)
-
+    response = requests.post(start_url, json=payload, params=params, timeout=30)
     if response.status_code != 201:
-        st.error(f"Fehler beim Starten: {response.status_code}")
         return None
 
     run_id = response.json()["data"]["id"]
-
-    # Warten bis fertig
     status_url = f"https://api.apify.com/v2/actor-runs/{run_id}"
 
-    with st.spinner("Daten werden geladen... (kann 30-60 Sekunden dauern)"):
-        for i in range(30):
-            time.sleep(5)
-            status_response = requests.get(status_url, params=params)
-            status = status_response.json()["data"]["status"]
+    for i in range(30):
+        time.sleep(5)
+        status_response = requests.get(status_url, params=params)
+        status = status_response.json()["data"]["status"]
+        if status == "SUCCEEDED":
+            break
+        elif status in ["FAILED", "ABORTED"]:
+            return None
 
-            if status == "SUCCEEDED":
-                break
-            elif status in ["FAILED", "ABORTED"]:
-                st.error("Scraper fehlgeschlagen.")
-                return None
-
-    # Daten holen
     dataset_id = status_response.json()["data"]["defaultDatasetId"]
     data_url = f"https://api.apify.com/v2/datasets/{dataset_id}/items"
     data_response = requests.get(data_url, params=params)
-
     return data_response.json()
 
 
-def analyze_with_claude(data, username):
+def suggest_comparison_accounts(main_data, username):
+    profile_info = {
+        "username": username,
+        "videos": []
+    }
+
+    for item in main_data[:10]:
+        profile_info["videos"].append({
+            "beschreibung": item.get("text", ""),
+            "hashtags": item.get("hashtags", []),
+            "views": item.get("playCount", 0),
+        })
+
+    prompt = f"""Analysiere diesen TikTok Account und schlage passende Vergleichs-Accounts vor.
+
+Account: @{username}
+Letzte Videos und Hashtags:
+{json.dumps(profile_info["videos"], ensure_ascii=False, indent=2)}
+
+Basierend auf dem Content-Typ, den Hashtags und der Nische:
+
+1. Bestimme die genaue Nische/Content-Kategorie dieses Accounts
+2. Schlage exakt 6 reale TikTok Accounts vor:
+   - 2 Top-Performer in dieser Nische (sehr groß, viele Follower)
+   - 2 ähnlich große Accounts (ähnliche Größe wie @{username})
+   - 2 kleinere Accounts in der gleichen Nische
+
+Antworte NUR in diesem JSON Format ohne weitere Erklärung:
+{{
+  "nische": "beschreibung der nische",
+  "accounts": [
+    {{"username": "tiktok_username", "kategorie": "top_performer", "grund": "kurze begründung"}},
+    {{"username": "tiktok_username", "kategorie": "top_performer", "grund": "kurze begründung"}},
+    {{"username": "tiktok_username", "kategorie": "aehnlich", "grund": "kurze begründung"}},
+    {{"username": "tiktok_username", "kategorie": "aehnlich", "grund": "kurze begründung"}},
+    {{"username": "tiktok_username", "kategorie": "kleiner", "grund": "kurze begründung"}},
+    {{"username": "tiktok_username", "kategorie": "kleiner", "grund": "kurze begründung"}}
+  ]
+}}
+
+Nur echte, existierende TikTok Accounts vorschlagen."""
+
+    message = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1000,
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    text = message.content[0].text
+    text = text.replace("```json", "").replace("```", "").strip()
+    return json.loads(text)
+
+
+def extract_video_data(data):
     videos = []
     for item in data:
         if "videoMeta" in item or "text" in item:
@@ -73,100 +113,237 @@ def analyze_with_claude(data, username):
                 "hashtags": item.get("hashtags", []),
                 "dauer": item.get("videoMeta", {}).get("duration", 0),
             })
+    return videos
 
-    if not videos:
-        return "Keine Videos gefunden."
+
+def full_comparison_analysis(main_username, main_videos, comparison_accounts_data, nische):
+    comparison_summary = {}
+    for username, videos in comparison_accounts_data.items():
+        if videos:
+            total_views = sum(v["views"] for v in videos)
+            total_likes = sum(v["likes"] for v in videos)
+            avg_views = total_views // len(videos) if videos else 0
+            avg_engagement = round((total_likes / total_views * 100) if total_views > 0 else 0, 2)
+            comparison_summary[username] = {
+                "avg_views": avg_views,
+                "avg_engagement": avg_engagement,
+                "top_hashtags": list(set([h for v in videos for h in v["hashtags"]]))[:10],
+                "avg_duration": round(sum(v["dauer"] for v in videos) / len(videos), 1) if videos else 0,
+            }
+
+    main_total_views = sum(v["views"] for v in main_videos)
+    main_total_likes = sum(v["likes"] for v in main_videos)
+    main_avg_views = main_total_views // len(main_videos) if main_videos else 0
+    main_avg_engagement = round((main_total_likes / main_total_views * 100) if main_total_views > 0 else 0, 2)
 
     prompt = f"""Du bist ein Expert für TikTok Analytics und Social Media Wachstum.
 
-Analysiere die TikTok Daten von @{username} und gib eine detaillierte Analyse auf Deutsch.
+Erstelle eine detaillierte Vergleichsanalyse für @{main_username} in der Nische: {nische}
 
-Hier sind die letzten {len(videos)} Videos:
+HAUPTACCOUNT @{main_username}:
+- Durchschnittliche Views: {main_avg_views:,}
+- Engagement Rate: {main_avg_engagement}%
+- Analysierte Videos: {len(main_videos)}
+- Top Videos: {json.dumps(sorted(main_videos, key=lambda x: x["views"], reverse=True)[:3], ensure_ascii=False)}
 
-{json.dumps(videos, ensure_ascii=False, indent=2)}
+VERGLEICHS-ACCOUNTS:
+{json.dumps(comparison_summary, ensure_ascii=False, indent=2)}
 
-Erstelle eine strukturierte Analyse mit:
+Erstelle eine strukturierte Analyse auf Deutsch mit:
 
-1. **Performance Übersicht**
-   - Durchschnittliche Views, Likes, Comments
-   - Engagement Rate
-   - Bestes und schlechtestes Video
+## 1. 📊 Positions-Analyse
+- Wo steht @{main_username} im Vergleich zu den anderen?
+- Stärken und Schwächen im direkten Vergleich
+- Engagement Rate Vergleich
 
-2. **Content Analyse**
-   - Welche Themen/Typen performen am besten
-   - Welche Hashtags funktionieren
-   - Optimale Videolänge
+## 2. 🏆 Was die Top-Performer besser machen
+- Konkrete Unterschiede in Content-Strategie
+- Hashtag-Strategie der Erfolgreichen
+- Videolänge und Posting-Frequenz
 
-3. **Posting Muster**
-   - Beste Posting-Zeiten
-   - Posting-Frequenz
+## 3. 📈 Wachstumspotenzial
+- Realistisches Potenzial basierend auf den Daten
+- Welche Accounts als Vorbild nehmen und warum
 
-4. **Konkrete Empfehlungen**
-   - 5 spezifische Aktionen die @{username} sofort umsetzen kann
-   - Was unbedingt vermieden werden sollte
+## 4. 🎯 5 konkrete Aktionen für @{main_username}
+Basierend auf dem was die Top-Performer machen und was @{main_username} noch nicht macht.
+Jede Aktion mit konkretem Beispiel.
 
-5. **Wachstumsprognose**
-   - Realistisches 30-Tage Ziel wenn Empfehlungen umgesetzt werden
+## 5. ⚠️ Was @{main_username} sofort aufhören sollte
+Basierend auf den Daten der schlechter performenden Accounts.
 
-Sei direkt, konkret und actionable. Keine generischen Tipps."""
+Sei sehr konkret und direkt. Keine generischen Tipps."""
 
-    with st.spinner("AI analysiert deine Daten..."):
-        message = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=4000,
-            messages=[{"role": "user", "content": prompt}]
-        )
+    message = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=4000,
+        messages=[{"role": "user", "content": prompt}]
+    )
 
     return message.content[0].text
 
 
 # UI
-st.set_page_config(page_title="TikTok Analyzer", page_icon="🎵", layout="wide")
+st.set_page_config(page_title="TikTok AI Analyzer", page_icon="🎵", layout="wide")
 
 st.title("🎵 TikTok AI Analyzer")
-st.subheader("Analysiere deinen TikTok Account mit KI")
+st.subheader("KI-gestützte Analyse mit Konkurrenzvergleich")
 
-with st.sidebar:
-    st.header("⚙️ Einstellungen")
+# Session State
+if "step" not in st.session_state:
+    st.session_state.step = 1
+if "main_data" not in st.session_state:
+    st.session_state.main_data = None
+if "suggestions" not in st.session_state:
+    st.session_state.suggestions = None
+if "selected_accounts" not in st.session_state:
+    st.session_state.selected_accounts = []
+
+# STEP 1 — Account eingeben
+if st.session_state.step == 1:
+    st.markdown("### Schritt 1: Deinen Account analysieren")
     username = st.text_input("TikTok Username", placeholder="z.B. lucasbenner")
-    analyze_btn = st.button("🔍 Analysieren", type="primary")
 
-if analyze_btn and username:
-    data = get_tiktok_data(username)
+    if st.button("🔍 Account scannen", type="primary"):
+        if username:
+            with st.spinner(f"@{username} wird gescannt..."):
+                data = scrape_tiktok_account(username)
 
-    if data:
-        st.success(f"✅ {len(data)} Videos geladen")
+            if data:
+                st.session_state.main_data = data
+                st.session_state.username = username
+                st.success(f"✅ {len(data)} Videos von @{username} geladen")
 
-        col1, col2, col3 = st.columns(3)
+                with st.spinner("KI sucht passende Vergleichs-Accounts..."):
+                    try:
+                        suggestions = suggest_comparison_accounts(data, username)
+                        st.session_state.suggestions = suggestions
+                        st.session_state.step = 2
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Fehler bei Account-Suche: {e}")
+            else:
+                st.error("Account nicht gefunden. Prüfe den Username.")
 
-        total_views = sum(item.get("playCount", 0) for item in data)
-        total_likes = sum(item.get("diggCount", 0) for item in data)
-        avg_views = total_views // len(data) if data else 0
+# STEP 2 — Vergleichs-Accounts auswählen
+elif st.session_state.step == 2:
+    suggestions = st.session_state.suggestions
+    username = st.session_state.username
 
-        with col1:
-            st.metric("👁️ Gesamt Views", f"{total_views:,}")
-        with col2:
-            st.metric("❤️ Gesamt Likes", f"{total_likes:,}")
-        with col3:
-            st.metric("📊 Ø Views pro Video", f"{avg_views:,}")
+    st.markdown(f"### Schritt 2: Vergleichs-Accounts auswählen")
+    st.info(f"**Erkannte Nische:** {suggestions['nische']}")
+    st.markdown("Die KI hat folgende Accounts gefunden. Wähle welche du vergleichen möchtest:")
 
-        st.divider()
+    selected = []
 
-        analysis = analyze_with_claude(data, username)
+    col1, col2, col3 = st.columns(3)
 
-        st.markdown("## 🤖 AI Analyse")
-        st.markdown(analysis)
+    top_accounts = [a for a in suggestions["accounts"] if a["kategorie"] == "top_performer"]
+    similar_accounts = [a for a in suggestions["accounts"] if a["kategorie"] == "aehnlich"]
+    smaller_accounts = [a for a in suggestions["accounts"] if a["kategorie"] == "kleiner"]
 
-        st.divider()
+    with col1:
+        st.markdown("#### 🏆 Top Performer")
+        for acc in top_accounts:
+            if st.checkbox(f"@{acc['username']}", key=f"check_{acc['username']}", value=True):
+                selected.append(acc["username"])
+            st.caption(acc["grund"])
+
+    with col2:
+        st.markdown("#### 🔄 Ähnliche Accounts")
+        for acc in similar_accounts:
+            if st.checkbox(f"@{acc['username']}", key=f"check_{acc['username']}", value=True):
+                selected.append(acc["username"])
+            st.caption(acc["grund"])
+
+    with col3:
+        st.markdown("#### 📉 Kleinere Accounts")
+        for acc in smaller_accounts:
+            if st.checkbox(f"@{acc['username']}", key=f"check_{acc['username']}", value=False):
+                selected.append(acc["username"])
+            st.caption(acc["grund"])
+
+    col_back, col_next = st.columns([1, 3])
+    with col_back:
+        if st.button("← Zurück"):
+            st.session_state.step = 1
+            st.rerun()
+    with col_next:
+        if st.button("🚀 Vergleich starten", type="primary"):
+            if selected:
+                st.session_state.selected_accounts = selected
+                st.session_state.step = 3
+                st.rerun()
+            else:
+                st.warning("Wähle mindestens einen Account aus.")
+
+# STEP 3 — Analyse
+elif st.session_state.step == 3:
+    username = st.session_state.username
+    selected_accounts = st.session_state.selected_accounts
+    suggestions = st.session_state.suggestions
+
+    st.markdown("### Schritt 3: Vollständige Vergleichsanalyse")
+
+    comparison_data = {}
+    total = len(selected_accounts)
+
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+
+    for i, acc in enumerate(selected_accounts):
+        status_text.text(f"Scanne @{acc}... ({i+1}/{total})")
+        data = scrape_tiktok_account(acc)
+        if data:
+            comparison_data[acc] = extract_video_data(data)
+        progress_bar.progress((i + 1) / total)
+
+    status_text.text("KI analysiert alle Daten...")
+
+    main_videos = extract_video_data(st.session_state.main_data)
+    analysis = full_comparison_analysis(
+        username,
+        main_videos,
+        comparison_data,
+        suggestions["nische"]
+    )
+
+    progress_bar.empty()
+    status_text.empty()
+
+    # Metrics
+    col1, col2, col3, col4 = st.columns(4)
+    total_views = sum(v["views"] for v in main_videos)
+    total_likes = sum(v["likes"] for v in main_videos)
+    avg_views = total_views // len(main_videos) if main_videos else 0
+    engagement = round((total_likes / total_views * 100) if total_views > 0 else 0, 2)
+
+    with col1:
+        st.metric("👁️ Gesamt Views", f"{total_views:,}")
+    with col2:
+        st.metric("❤️ Gesamt Likes", f"{total_likes:,}")
+    with col3:
+        st.metric("📊 Ø Views", f"{avg_views:,}")
+    with col4:
+        st.metric("💬 Engagement", f"{engagement}%")
+
+    st.divider()
+    st.markdown("## 🤖 KI Vergleichsanalyse")
+    st.markdown(analysis)
+
+    st.divider()
+    col_download, col_restart = st.columns([1, 1])
+    with col_download:
         st.download_button(
             label="📥 Analyse downloaden",
             data=analysis,
-            file_name=f"tiktok_analyse_{username}.txt",
+            file_name=f"tiktok_vergleich_{username}.txt",
             mime="text/plain"
         )
-
-elif analyze_btn and not username:
-    st.warning("Bitte gib einen TikTok Username ein.")
-
-else:
-    st.info("👈 Gib links einen TikTok Username ein und klicke auf Analysieren.")
+    with col_restart:
+        if st.button("🔄 Neue Analyse"):
+            st.session_state.step = 1
+            st.session_state.main_data = None
+            st.session_state.suggestions = None
+            st.session_state.selected_accounts = []
+            st.rerun()

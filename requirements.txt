@@ -1,4 +1,10 @@
+<<<<<<< HEAD
 streamlit
 anthropic
 requests
+=======
+streamlit
+anthropic
+requests
+>>>>>>> 595be03566dc6f4b87eac84da55b6e214df24f53
 python-dotenv
