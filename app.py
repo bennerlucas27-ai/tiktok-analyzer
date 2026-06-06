@@ -105,6 +105,7 @@ Nur echte, existierende TikTok Accounts vorschlagen."""
 
 
 def extract_video_data(data):
+    from datetime import datetime, timezone
     videos = []
     for item in data:
         if "videoMeta" in item or "text" in item:
@@ -118,24 +119,61 @@ def extract_video_data(data):
                 "hashtags": [h if isinstance(h, str) else h.get("name", "") for h in item.get("hashtags", [])],
                 "dauer": item.get("videoMeta", {}).get("duration", 0),
             })
-    return videos
+
+    # Sortiere nach Datum (neueste zuerst)
+    videos.sort(key=lambda x: x["datum"], reverse=True)
+
+    # Filter letzte 12 Monate
+    now = datetime.now(timezone.utc)
+    last_12_months = []
+    for v in videos:
+        try:
+            dt = datetime.fromisoformat(v["datum"].replace("Z", "+00:00"))
+            if (now - dt).days <= 365:
+                last_12_months.append(v)
+        except:
+            pass
+
+    # 30 neueste
+    newest_30 = videos[:30]
+
+    # 10 beste der letzten 12 Monate
+    top_10 = sorted(last_12_months, key=lambda x: x["views"], reverse=True)[:10]
+
+    # 10 schlechteste der letzten 12 Monate
+    bottom_10 = sorted(last_12_months, key=lambda x: x["views"])[:10]
+
+    return {
+        "newest_30": newest_30,
+        "top_10": top_10,
+        "bottom_10": bottom_10,
+        "all": videos
+    }
 
 
-def full_comparison_analysis(main_username, main_videos, comparison_accounts_data, nische):
+def full_comparison_analysis(main_username, main_videos_dict, comparison_accounts_data, nische):
+    # Extract video lists from dict
+    newest = main_videos_dict.get("newest_30", [])
+    top_10 = main_videos_dict.get("top_10", [])
+    bottom_10 = main_videos_dict.get("bottom_10", [])
+
     comparison_summary = {}
-    for username, videos in comparison_accounts_data.items():
-        if videos:
-            total_views = sum(v["views"] for v in videos)
-            total_likes = sum(v["likes"] for v in videos)
-            avg_views = total_views // len(videos) if videos else 0
-            avg_engagement = round((total_likes / total_views * 100) if total_views > 0 else 0, 2)
-            comparison_summary[username] = {
-                "avg_views": avg_views,
-                "avg_engagement": avg_engagement,
-                "top_hashtags": list(set([h if isinstance(h, str) else h.get("name", "") for v in videos for h in (v["hashtags"] if isinstance(v["hashtags"], list) else [])]))[:10],
-                "avg_duration": round(sum(v["dauer"] for v in videos) / len(videos), 1) if videos else 0,
-            }
+    for username, videos_dict in comparison_accounts_data.items():
+        if videos_dict:
+            videos = videos_dict.get("newest_30", []) if isinstance(videos_dict, dict) else videos_dict
+            if videos:
+                total_views = sum(v["views"] for v in videos)
+                total_likes = sum(v["likes"] for v in videos)
+                avg_views = total_views // len(videos) if videos else 0
+                avg_engagement = round((total_likes / total_views * 100) if total_views > 0 else 0, 2)
+                comparison_summary[username] = {
+                    "avg_views": avg_views,
+                    "avg_engagement": avg_engagement,
+                    "top_hashtags": list(set([h if isinstance(h, str) else h.get("name", "") for v in videos for h in (v["hashtags"] if isinstance(v["hashtags"], list) else [])]))[:10],
+                    "avg_duration": round(sum(v["dauer"] for v in videos) / len(videos), 1) if videos else 0,
+                }
 
+    main_videos = newest
     main_total_views = sum(v["views"] for v in main_videos)
     main_total_likes = sum(v["likes"] for v in main_videos)
     main_avg_views = main_total_views // len(main_videos) if main_videos else 0
@@ -146,10 +184,11 @@ def full_comparison_analysis(main_username, main_videos, comparison_accounts_dat
 Erstelle eine detaillierte Vergleichsanalyse für @{main_username} in der Nische: {nische}
 
 HAUPTACCOUNT @{main_username}:
-- Durchschnittliche Views: {main_avg_views:,}
+- Durchschnittliche Views (letzte 30): {main_avg_views:,}
 - Engagement Rate: {main_avg_engagement}%
 - Analysierte Videos: {len(main_videos)}
-- Top Videos: {json.dumps(sorted(main_videos, key=lambda x: x["views"], reverse=True)[:3], ensure_ascii=False)}
+- TOP 10 Videos (letztes Jahr): {json.dumps(top_10[:3], ensure_ascii=False)}
+- SCHLECHTESTE 10 Videos (letztes Jahr): {json.dumps(bottom_10[:3], ensure_ascii=False)}
 
 VERGLEICHS-ACCOUNTS:
 {json.dumps(comparison_summary, ensure_ascii=False, indent=2)}
@@ -302,11 +341,14 @@ elif st.session_state.step == 3:
         data = scrape_tiktok_account(acc)
         if data:
             comparison_data[acc] = extract_video_data(data)
+        else:
+            comparison_data[acc] = {"newest_30": [], "top_10": [], "bottom_10": [], "all": []}
         progress_bar.progress((i + 1) / total)
 
     status_text.text("KI analysiert alle Daten...")
 
     main_videos = extract_video_data(st.session_state.main_data)
+    newest = main_videos.get("newest_30", [])
     analysis = full_comparison_analysis(
         username,
         main_videos,
@@ -319,9 +361,9 @@ elif st.session_state.step == 3:
 
     # Metrics
     col1, col2, col3, col4 = st.columns(4)
-    total_views = sum(v["views"] for v in main_videos)
-    total_likes = sum(v["likes"] for v in main_videos)
-    avg_views = total_views // len(main_videos) if main_videos else 0
+    total_views = sum(v["views"] for v in newest)
+    total_likes = sum(v["likes"] for v in newest)
+    avg_views = total_views // len(newest) if newest else 0
     engagement = round((total_likes / total_views * 100) if total_views > 0 else 0, 2)
 
     with col1:
