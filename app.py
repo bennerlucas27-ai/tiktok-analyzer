@@ -95,7 +95,12 @@ Nur echte, existierende TikTok Accounts vorschlagen."""
     )
 
     text = message.content[0].text
+    text = message.content[0].text
     text = text.replace("```json", "").replace("```", "").strip()
+    import re
+    match = re.search(r'{.*}', text, re.DOTALL)
+    if match:
+        text = match.group(0)
     return json.loads(text)
 
 
