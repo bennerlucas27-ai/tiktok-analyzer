@@ -1,10 +1,4 @@
-<<<<<<< HEAD
-streamlit
-anthropic
-requests
-=======
-streamlit
-anthropic
-requests
->>>>>>> 595be03566dc6f4b87eac84da55b6e214df24f53
-python-dotenv
+streamlit==1.45.1
+anthropic==0.52.0
+requests==2.32.3
+python-dotenv==1.0.1
