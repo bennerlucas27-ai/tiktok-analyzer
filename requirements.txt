@@ -2,5 +2,5 @@ streamlit==1.45.1
 anthropic==0.52.0
 requests==2.32.3
 python-dotenv==1.0.1
-supabase==2.15.0
+supabase
 pandas==2.2.3
