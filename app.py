@@ -339,10 +339,24 @@ elif st.session_state.step == 3:
     for i, acc in enumerate(selected_accounts):
         status_text.text(f"Scanne @{acc}... ({i+1}/{total})")
         data = scrape_tiktok_account(acc)
-        if data:
-            comparison_data[acc] = extract_video_data(data)
+        if data and len(data) > 0:
+            extracted = extract_video_data(data)
+            newest = extracted.get("newest_30", [])
+            # Prüfe ob Account aktiv ist (Video in letzten 90 Tagen)
+            from datetime import datetime, timezone
+            now = datetime.now(timezone.utc)
+            recent = [v for v in newest if v["datum"] and (now - datetime.fromisoformat(v["datum"].replace("Z", "+00:00"))).days <= 90]
+            if len(newest) == 0:
+                status_text.text(f"⚠️ @{acc} ist privat oder nicht gefunden — wird übersprungen")
+                time.sleep(2)
+            elif len(recent) == 0:
+                status_text.text(f"⚠️ @{acc} ist inaktiv (kein Video in 90 Tagen) — wird übersprungen")
+                time.sleep(2)
+            else:
+                comparison_data[acc] = extracted
         else:
-            comparison_data[acc] = {"newest_30": [], "top_10": [], "bottom_10": [], "all": []}
+            status_text.text(f"⚠️ @{acc} konnte nicht gescannt werden — wird übersprungen")
+            time.sleep(2)
         progress_bar.progress((i + 1) / total)
 
     status_text.text("KI analysiert alle Daten...")
