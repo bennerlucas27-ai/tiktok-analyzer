@@ -287,6 +287,8 @@ elif st.session_state.step == 2:
 
     selected = []
 
+    st.info("💡 Du kannst die Usernamen direkt bearbeiten falls sie nicht stimmen.")
+
     col1, col2, col3 = st.columns(3)
 
     top_accounts = [a for a in suggestions["accounts"] if a["kategorie"] == "top_performer"]
@@ -295,24 +297,30 @@ elif st.session_state.step == 2:
 
     with col1:
         st.markdown("#### 🏆 Top Performer")
-        for acc in top_accounts:
-            if st.checkbox(f"@{acc['username']}", key=f"check_{acc['username']}", value=True):
-                selected.append(acc["username"])
+        for i, acc in enumerate(top_accounts):
+            checked = st.checkbox(f"Einschließen", key=f"check_{acc['username']}_{i}", value=True)
+            edited = st.text_input("Username", value=acc["username"], key=f"edit_{acc['username']}_{i}", label_visibility="collapsed")
             st.caption(acc["grund"])
+            if checked and edited:
+                selected.append(edited)
 
     with col2:
         st.markdown("#### 🔄 Ähnliche Accounts")
-        for acc in similar_accounts:
-            if st.checkbox(f"@{acc['username']}", key=f"check_{acc['username']}", value=True):
-                selected.append(acc["username"])
+        for i, acc in enumerate(similar_accounts):
+            checked = st.checkbox(f"Einschließen", key=f"check_{acc['username']}_{i}_s", value=True)
+            edited = st.text_input("Username", value=acc["username"], key=f"edit_{acc['username']}_{i}_s", label_visibility="collapsed")
             st.caption(acc["grund"])
+            if checked and edited:
+                selected.append(edited)
 
     with col3:
         st.markdown("#### 📉 Kleinere Accounts")
-        for acc in smaller_accounts:
-            if st.checkbox(f"@{acc['username']}", key=f"check_{acc['username']}", value=False):
-                selected.append(acc["username"])
+        for i, acc in enumerate(smaller_accounts):
+            checked = st.checkbox(f"Einschließen", key=f"check_{acc['username']}_{i}_k", value=False)
+            edited = st.text_input("Username", value=acc["username"], key=f"edit_{acc['username']}_{i}_k", label_visibility="collapsed")
             st.caption(acc["grund"])
+            if checked and edited:
+                selected.append(edited)
 
     col_back, col_next = st.columns([1, 3])
     with col_back:
