@@ -18,7 +18,7 @@ def scrape_tiktok_account(username):
     start_url = "https://api.apify.com/v2/acts/clockworks~tiktok-profile-scraper/runs"
     payload = {
         "profiles": [username],
-        "resultsPerPage": 30,
+        "resultsPerPage": 50,
         "shouldDownloadVideos": False,
         "shouldDownloadCovers": False,
     }
@@ -209,6 +209,7 @@ if st.session_state.step == 1:
     st.markdown("### Schritt 1: Deinen Account analysieren")
     username = st.text_input("TikTok Username", placeholder="z.B. lucasbenner")
 
+    st.caption("ℹ️ Die Analyse basiert auf den letzten 50 Videos des Accounts.")
     if st.button("🔍 Account scannen", type="primary"):
         if username:
             with st.spinner(f"@{username} wird gescannt..."):
