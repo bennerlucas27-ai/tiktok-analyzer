@@ -115,7 +115,7 @@ def extract_video_data(data):
                 "comments": item.get("commentCount", 0),
                 "shares": item.get("shareCount", 0),
                 "datum": item.get("createTimeISO", ""),
-                "hashtags": item.get("hashtags", []),
+                "hashtags": [h if isinstance(h, str) else h.get("name", "") for h in item.get("hashtags", [])],
                 "dauer": item.get("videoMeta", {}).get("duration", 0),
             })
     return videos
@@ -132,7 +132,7 @@ def full_comparison_analysis(main_username, main_videos, comparison_accounts_dat
             comparison_summary[username] = {
                 "avg_views": avg_views,
                 "avg_engagement": avg_engagement,
-                "top_hashtags": list(set([h for v in videos for h in v["hashtags"]]))[:10],
+                "top_hashtags": list(set([h if isinstance(h, str) else h.get("name", "") for v in videos for h in (v["hashtags"] if isinstance(v["hashtags"], list) else [])]))[:10],
                 "avg_duration": round(sum(v["dauer"] for v in videos) / len(videos), 1) if videos else 0,
             }
 
