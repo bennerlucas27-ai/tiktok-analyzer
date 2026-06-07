@@ -697,7 +697,8 @@ Auf Deutsch. Direkt. Kein Fließtext."""
 
         if latest and latest.get("top_accounts"):
             my_views = int(latest.get("avg_views", 0) or 0)
-            comp_accounts = latest.get("top_accounts", [])
+            raw_accounts = latest.get("top_accounts", []) or []
+            comp_accounts = [str(a) if not isinstance(a, str) else a for a in raw_accounts]
             username = latest.get("username", "du")
 
             st.markdown(f"""
