@@ -1136,6 +1136,75 @@ Format: Nummerierte Liste, direkt und actionable. Kein Intro, keine Zusammenfass
             )
 
 
+# ─── QUICK REFRESH ────────────────────────────────────────────────────────────
+
+def quick_refresh(user_id, username):
+    """Scrapt nur den eigenen Account, aktualisiert video_dates + metrics in Supabase. Kein Vergleich, keine KI."""
+    with st.spinner(f"Quick Refresh für @{username}..."):
+        data = scrape_tiktok_account(username)
+    if not data:
+        st.error("Account nicht erreichbar.")
+        return False
+
+    videos = extract_video_data(data)
+    newest = videos.get("newest_30", [])
+    all_videos = videos.get("all", [])
+
+    if not newest:
+        st.error("Keine Videos gefunden.")
+        return False
+
+    total_views = sum(v["views"] for v in newest)
+    total_likes = sum(v["likes"] for v in newest)
+    avg_views = total_views // len(newest)
+    engagement = round((total_likes / total_views * 100) if total_views > 0 else 0, 2)
+    video_dates_list = [{"datum": v["datum"], "views": v["views"], "beschreibung": (v.get("beschreibung") or "")[:80]} for v in all_videos if v.get("datum")]
+
+    # Get latest analysis to update
+    try:
+        result = supabase.table("analyses").select("id, nische, top_accounts, analysis_text").eq("user_id", user_id).order("created_at", desc=True).limit(1).execute()
+        if result.data:
+            latest_id = result.data[0]["id"]
+            supabase.table("analyses").update({
+                "avg_views": avg_views,
+                "engagement_rate": engagement,
+                "video_dates": video_dates_list,
+            }).eq("id", latest_id).execute()
+        else:
+            st.error("Keine bestehende Analyse gefunden. Mach zuerst eine vollständige Analyse.")
+            return False
+    except Exception as e:
+        st.error(f"Fehler beim Speichern: {e}")
+        return False
+
+    # Update session state
+    st.session_state["last_top_videos"] = videos.get("top_10", [])
+    st.session_state["last_flop_videos"] = videos.get("bottom_10", [])
+
+    # Watchtime
+    watchtime_vals = [v.get("watchtime", 0) for v in newest if v.get("watchtime")]
+    dur_vals = [v.get("dauer", 0) for v in newest if v.get("dauer")]
+    if watchtime_vals:
+        avg_wt = sum(watchtime_vals) / len(watchtime_vals)
+        avg_dur_v = sum(dur_vals) / len(dur_vals) if dur_vals else 0
+        by_dur = {}
+        for v in newest:
+            d = v.get("dauer", 0)
+            wt = v.get("watchtime", 0)
+            if d > 0 and wt > 0:
+                bucket = "<10s" if d < 10 else "10-20s" if d < 20 else "20-30s" if d < 30 else "30-60s" if d < 60 else ">60s"
+                by_dur.setdefault(bucket, []).append(wt / d * 100)
+        st.session_state["last_watchtime"] = {
+            "avg_watchtime": round(avg_wt, 1),
+            "avg_duration": round(avg_dur_v, 1),
+            "best_watchtime": round(max(watchtime_vals), 1),
+            "dropoff_sec": round(avg_wt, 0),
+            "by_duration": {k: round(sum(vals)/len(vals), 1) for k, vals in by_dur.items()},
+        }
+
+    return True, avg_views, engagement
+
+
 # ─── MAIN APP ─────────────────────────────────────────────────────────────────
 
 def show_app():
@@ -1157,6 +1226,38 @@ def show_app():
             page = st.radio("", ["🔍 Neue Analyse", "📊 Dashboard"], label_visibility="collapsed")
         else:
             page = "🔍 Neue Analyse"
+
+        # Quick Refresh — nur für Premium auf Dashboard
+        if premium and page == "📊 Dashboard":
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background:rgba(255,255,255,0.02);border:0.5px solid rgba(255,255,255,0.06);
+                        border-radius:8px;padding:12px 14px;margin-bottom:4px;">
+                <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
+                            color:rgba(232,230,224,0.25);margin-bottom:6px;">Quick Refresh</div>
+                <div style="font-size:11px;color:rgba(232,230,224,0.3);line-height:1.7;margin-bottom:10px;">
+                    Nur dein Account — kein Vergleich.<br>~30 Sek · täglich nutzen
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Get username from latest analysis
+            try:
+                latest_result = supabase.table("analyses").select("username").eq("user_id", user_id).order("created_at", desc=True).limit(1).execute()
+                qr_username = latest_result.data[0]["username"] if latest_result.data else None
+            except:
+                qr_username = None
+
+            if qr_username:
+                if st.button(f"⚡ @{qr_username} refreshen", use_container_width=True, key="quick_refresh_btn"):
+                    result = quick_refresh(user_id, qr_username)
+                    if result and result is not False:
+                        _, new_views, new_eng = result
+                        st.success(f"✅ Aktualisiert — {fmt(new_views)} Ø Views · {new_eng}% Eng")
+                        time.sleep(1)
+                        st.rerun()
+            else:
+                st.caption("Erst eine Analyse starten.")
 
         if not premium:
             st.markdown("""
