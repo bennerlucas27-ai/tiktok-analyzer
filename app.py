@@ -8,6 +8,7 @@ import re
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 from supabase import create_client
+import stripe
 
 load_dotenv()
 
@@ -18,6 +19,8 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+STRIPE_PRICE_ID = os.getenv("STRIPE_PRICE_ID")
 
 st.set_page_config(page_title="TikTok AI Analyzer", page_icon="🎵", layout="wide")
 
@@ -42,6 +45,22 @@ def sign_out():
     for key in list(st.session_state.keys()):
         del st.session_state[key]
     st.rerun()
+
+def create_checkout_session(user_email, user_id):
+    try:
+        session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            line_items=[{"price": STRIPE_PRICE_ID, "quantity": 1}],
+            mode="subscription",
+            success_url="https://tiktok-analyser.streamlit.app?success=true",
+            cancel_url="https://tiktok-analyser.streamlit.app?canceled=true",
+            customer_email=user_email,
+            metadata={"user_id": user_id},
+            automatic_tax={"enabled": True},
+        )
+        return session.url
+    except Exception as e:
+        return None
 
 def has_used_free_analysis(user_id):
     try:
@@ -420,8 +439,9 @@ def show_app():
                 st.success("🎉 Das war deine kostenlose Analyse!")
                 st.markdown("### 🚀 Mehr Features mit Premium")
                 st.markdown("Dashboard, Verlauf, KI Coaching und mehr für nur **19€/Monat**")
-                if st.button("🚀 Jetzt upgraden", type="primary"):
-                    st.info("Stripe kommt bald — kontaktiere uns: upgrade@tiktok-analyzer.de")
+                checkout_url = create_checkout_session(user_email, user_id)
+                if checkout_url:
+                    st.link_button("🚀 Jetzt upgraden — 19€/Monat", checkout_url, type="primary")
 
             col_dl, col_new = st.columns(2)
             with col_dl:
