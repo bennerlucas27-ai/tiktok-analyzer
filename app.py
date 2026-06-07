@@ -5,6 +5,7 @@ import os
 import json
 import time
 import re
+import pandas as pd
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 from supabase import create_client
@@ -23,6 +24,134 @@ stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_PRICE_ID = os.getenv("STRIPE_PRICE_ID")
 
 st.set_page_config(page_title="TikTok AI Analyzer", page_icon="🎵", layout="wide")
+
+# ─── GLOBAL CSS ───────────────────────────────────────────────────────────────
+
+def inject_css():
+    st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap');
+
+#MainMenu, footer, header { visibility: hidden; }
+.block-container { padding-top: 0 !important; padding-bottom: 0 !important; max-width: 100% !important; }
+section[data-testid="stSidebar"] > div { background: #0d0d0f !important; border-right: 0.5px solid rgba(255,255,255,0.06) !important; }
+
+html, body, [class*="css"] {
+    font-family: 'Syne', sans-serif !important;
+    background-color: #0a0a0b !important;
+    color: #e8e6e0 !important;
+}
+
+div[data-testid="metric-container"] {
+    background: rgba(255,255,255,0.03) !important;
+    border: 0.5px solid rgba(255,255,255,0.07) !important;
+    border-radius: 10px !important;
+    padding: 16px 18px !important;
+}
+div[data-testid="metric-container"] label {
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.12em !important;
+    text-transform: uppercase !important;
+    color: rgba(232,230,224,0.3) !important;
+}
+div[data-testid="metric-container"] div[data-testid="stMetricValue"] {
+    font-family: 'DM Mono', monospace !important;
+    font-size: 24px !important;
+    color: #e8e6e0 !important;
+}
+
+.section-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(232,230,224,0.25);
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.section-label::after {
+    content: '';
+    flex: 1;
+    height: 0.5px;
+    background: rgba(255,255,255,0.05);
+}
+
+.db-panel {
+    background: rgba(255,255,255,0.02);
+    border: 0.5px solid rgba(255,255,255,0.07);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 0;
+}
+
+.metric-accent-red { height: 2px; background: #ff4d4d; border-radius: 2px; margin-bottom: 10px; }
+.metric-accent-amber { height: 2px; background: #f5a623; border-radius: 2px; margin-bottom: 10px; }
+.metric-accent-teal { height: 2px; background: #1d9e75; border-radius: 2px; margin-bottom: 10px; }
+.metric-accent-blue { height: 2px; background: #378add; border-radius: 2px; margin-bottom: 10px; }
+
+.live-indicator {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    background: #1d9e75;
+    border-radius: 50%;
+    margin-right: 6px;
+    animation: livepulse 1.8s ease-in-out infinite;
+}
+@keyframes livepulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.2; }
+}
+
+.video-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 0.5px solid rgba(255,255,255,0.05);
+}
+.video-rank { font-family: 'DM Mono', monospace; font-size: 11px; color: rgba(232,230,224,0.2); width: 24px; }
+.video-title { flex: 1; font-size: 13px; color: rgba(232,230,224,0.75); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.video-views { font-family: 'DM Mono', monospace; font-size: 13px; color: rgba(232,230,224,0.5); }
+.video-eng { font-size: 11px; color: #1d9e75; font-family: 'DM Mono', monospace; }
+
+.compare-row { margin-bottom: 10px; }
+.compare-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: rgba(232,230,224,0.4);
+    margin-bottom: 4px;
+    display: flex;
+    justify-content: space-between;
+}
+.compare-track { height: 5px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; }
+
+.wt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.wt-card { background: rgba(255,255,255,0.03); border: 0.5px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 14px 16px; }
+.wt-label { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(232,230,224,0.25); margin-bottom: 6px; }
+.wt-value { font-family: 'DM Mono', monospace; font-size: 22px; font-weight: 500; color: #e8e6e0; }
+.wt-sub { font-size: 10px; color: rgba(232,230,224,0.25); margin-top: 3px; }
+
+.acc-tag { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; padding: 3px 8px; border-radius: 4px; margin-right: 6px; }
+.acc-tag-you { background: rgba(255,77,77,0.08); border: 0.5px solid rgba(255,77,77,0.25); color: #ff4d4d; }
+.acc-tag-top { background: rgba(245,166,35,0.08); border: 0.5px solid rgba(245,166,35,0.25); color: #f5a623; }
+.acc-tag-similar { background: rgba(55,138,221,0.08); border: 0.5px solid rgba(55,138,221,0.25); color: #378add; }
+
+.upgrade-card { background: rgba(255,77,77,0.04); border: 0.5px solid rgba(255,77,77,0.2); border-radius: 10px; padding: 24px; text-align: center; }
+
+.sidebar-user { background: rgba(255,255,255,0.04); border: 0.5px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; }
+.sidebar-email { font-size: 12px; color: rgba(232,230,224,0.45); font-family: 'DM Mono', monospace; margin-bottom: 6px; }
+.sidebar-badge-premium { display: inline-block; background: rgba(255,77,77,0.1); border: 0.5px solid rgba(255,77,77,0.3); color: #ff4d4d; font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 3px 8px; border-radius: 4px; }
+.sidebar-badge-free { display: inline-block; background: rgba(255,255,255,0.04); border: 0.5px solid rgba(255,255,255,0.1); color: rgba(232,230,224,0.35); font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 3px 8px; border-radius: 4px; }
+
+div[data-testid="stExpander"] { background: rgba(255,255,255,0.02) !important; border: 0.5px solid rgba(255,255,255,0.07) !important; border-radius: 8px !important; }
+hr { border-color: rgba(255,255,255,0.06) !important; }
+</style>
+""", unsafe_allow_html=True)
+
 
 # ─── AUTH FUNCTIONS ───────────────────────────────────────────────────────────
 
@@ -78,6 +207,7 @@ def is_premium(user_id):
     except:
         return False
 
+
 # ─── TIKTOK FUNCTIONS ─────────────────────────────────────────────────────────
 
 def scrape_tiktok_account(username):
@@ -113,6 +243,7 @@ def extract_video_data(data):
                 "datum": item.get("createTimeISO", ""),
                 "hashtags": [h if isinstance(h, str) else h.get("name", "") for h in item.get("hashtags", [])],
                 "dauer": item.get("videoMeta", {}).get("duration", 0),
+                "watchtime": item.get("videoMeta", {}).get("avgWatchTime", 0),
             })
     videos.sort(key=lambda x: x["datum"], reverse=True)
     now = datetime.now(timezone.utc)
@@ -219,21 +350,59 @@ def load_analyses(user_id):
     except:
         return []
 
+
+# ─── HELPERS ──────────────────────────────────────────────────────────────────
+
+def fmt(n):
+    if n is None:
+        return "—"
+    n = int(n)
+    if n >= 1_000_000:
+        return f"{n/1_000_000:.1f}M"
+    if n >= 1_000:
+        return f"{n/1_000:.1f}K"
+    return str(n)
+
+def days_ago(iso_str):
+    try:
+        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+        d = (datetime.now(timezone.utc) - dt).days
+        if d == 0: return "Heute"
+        if d == 1: return "Gestern"
+        return f"vor {d}d"
+    except:
+        return ""
+
+def delta_pct(arr):
+    if len(arr) >= 2 and arr[1]:
+        return round(((arr[0] - arr[1]) / arr[1]) * 100, 1)
+    return None
+
+
 # ─── AUTH SCREEN ──────────────────────────────────────────────────────────────
 
 def show_auth():
-    col1, col2, col3 = st.columns([1, 2, 1])
+    col1, col2, col3 = st.columns([1, 1.2, 1])
     with col2:
-        st.title("🎵 TikTok AI Analyzer")
-        st.subheader("KI-gestützte Analyse mit Konkurrenzvergleich")
-        st.divider()
+        st.markdown("""
+        <div style="text-align:center;padding:48px 0 28px;">
+            <div style="font-size:11px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;
+                        color:rgba(232,230,224,0.2);margin-bottom:14px;">TikTok AI Analyzer</div>
+            <div style="font-family:'Syne',sans-serif;font-size:30px;font-weight:800;
+                        color:#e8e6e0;line-height:1.15;margin-bottom:10px;">
+                Versteh deinen Content.<br>Wirklich.
+            </div>
+            <div style="font-size:13px;color:rgba(232,230,224,0.35);margin-bottom:36px;">
+                KI-gestützte Analyse mit Konkurrenzvergleich
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-        tab1, tab2 = st.tabs(["🔑 Einloggen", "✨ Registrieren"])
-
+        tab1, tab2 = st.tabs(["Einloggen", "Registrieren"])
         with tab1:
-            email = st.text_input("Email", key="login_email")
-            password = st.text_input("Passwort", type="password", key="login_password")
-            if st.button("Einloggen", type="primary", use_container_width=True):
+            email = st.text_input("Email", key="login_email", placeholder="deine@email.com")
+            password = st.text_input("Passwort", type="password", key="login_password", placeholder="••••••••")
+            if st.button("Einloggen →", type="primary", use_container_width=True):
                 if email and password:
                     user, session, error = sign_in(email, password)
                     if user:
@@ -241,21 +410,400 @@ def show_auth():
                         st.session_state.session = session
                         st.rerun()
                     else:
-                        st.error("Login fehlgeschlagen. Email oder Passwort falsch.")
-
+                        st.error("Login fehlgeschlagen — Email oder Passwort falsch.")
         with tab2:
-            email = st.text_input("Email", key="signup_email")
-            password = st.text_input("Passwort (min. 6 Zeichen)", type="password", key="signup_password")
-            if st.button("Kostenlos registrieren", type="primary", use_container_width=True):
+            email = st.text_input("Email", key="signup_email", placeholder="deine@email.com")
+            password = st.text_input("Passwort (min. 6 Zeichen)", type="password", key="signup_password", placeholder="••••••••")
+            if st.button("Kostenlos starten →", type="primary", use_container_width=True):
                 if email and password:
                     user, error = sign_up(email, password)
                     if user:
-                        st.success("✅ Account erstellt! Bitte einloggen.")
+                        st.success("✅ Account erstellt! Jetzt einloggen.")
                     else:
                         st.error(f"Fehler: {error}")
 
-        st.divider()
-        st.caption("✅ Kostenlos: Eine vollständige Analyse | 🚀 Premium: Dashboard + alle Features")
+        st.markdown("""
+        <div style="text-align:center;margin-top:18px;">
+            <span style="font-size:11px;color:rgba(232,230,224,0.18);">
+                ✓ 1 kostenlose Analyse &nbsp;·&nbsp; ✓ Kein Abo nötig &nbsp;·&nbsp; ✓ Premium ab 19€/Mo
+            </span>
+        </div>
+        """, unsafe_allow_html=True)
+
+
+# ─── DASHBOARD ────────────────────────────────────────────────────────────────
+
+def show_dashboard(user_id, user_email, premium, analyses):
+    import plotly.graph_objects as go
+
+    latest = analyses[0] if analyses else None
+    all_avg_views = [a["avg_views"] for a in analyses if a.get("avg_views")]
+    all_eng = [float(a["engagement_rate"]) for a in analyses if a.get("engagement_rate")]
+
+    views_delta = delta_pct(all_avg_views)
+    eng_delta = delta_pct(all_eng)
+
+    # ── HEADER ──
+    st.markdown(f"""
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                padding:20px 2px 14px;border-bottom:0.5px solid rgba(255,255,255,0.05);margin-bottom:22px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+            <span class="live-indicator"></span>
+            <span style="font-size:11px;font-weight:700;letter-spacing:0.14em;
+                          text-transform:uppercase;color:rgba(232,230,224,0.25);">Live Dashboard</span>
+        </div>
+        <div style="font-size:11px;color:rgba(232,230,224,0.18);font-family:'DM Mono',monospace;">
+            {len(analyses)} Analysen gespeichert
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    if not latest:
+        st.info("Noch keine Analyse vorhanden. Starte deine erste Analyse!")
+        return
+
+    # ── HERO METRICS ──
+    st.markdown('<div class="section-label">Performance — Letzte Analyse</div>', unsafe_allow_html=True)
+
+    total_views_est = int(latest.get("avg_views", 0) or 0) * 30
+    total_likes_est = int(round(total_views_est * float(latest.get("engagement_rate", 0) or 0) / 100))
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.markdown('<div class="metric-accent-red"></div>', unsafe_allow_html=True)
+        st.metric("GESAMT VIEWS", fmt(total_views_est),
+                  delta=f"{views_delta:+.1f}%" if views_delta is not None else None)
+    with c2:
+        st.markdown('<div class="metric-accent-amber"></div>', unsafe_allow_html=True)
+        st.metric("GESAMT LIKES", fmt(total_likes_est))
+    with c3:
+        st.markdown('<div class="metric-accent-teal"></div>', unsafe_allow_html=True)
+        st.metric("ENGAGEMENT",
+                  f"{latest.get('engagement_rate', '—')}%",
+                  delta=f"{eng_delta:+.1f}%" if eng_delta is not None else None)
+    with c4:
+        st.markdown('<div class="metric-accent-blue"></div>', unsafe_allow_html=True)
+        st.metric("Ø VIEWS / VIDEO", fmt(latest.get("avg_views")))
+
+    st.markdown("<div style='height:22px'></div>", unsafe_allow_html=True)
+
+    # ── ROW 2: PERFORMANCE CHARTS + VERGLEICH SCREEN 1 ──
+    st.markdown('<div class="section-label">Performance-Verlauf & Account-Vergleich</div>', unsafe_allow_html=True)
+
+    col_charts, col_compare = st.columns([1.3, 1])
+
+    PLOTLY_LAYOUT = dict(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="DM Mono", color="rgba(232,230,224,0.35)", size=10),
+        margin=dict(l=0, r=4, t=6, b=0),
+        showlegend=False,
+        hovermode="x unified",
+    )
+    AXIS_X = dict(showgrid=False, zeroline=False, tickformat="%d.%m", tickfont=dict(size=10), linecolor="rgba(255,255,255,0.05)")
+    AXIS_Y = dict(showgrid=True, gridcolor="rgba(255,255,255,0.04)", zeroline=False, tickfont=dict(size=10))
+
+    with col_charts:
+        st.markdown('<div class="db-panel">', unsafe_allow_html=True)
+
+        if len(analyses) > 1:
+            df = pd.DataFrame([{
+                "Datum": a["created_at"][:10],
+                "Ø Views": a.get("avg_views", 0) or 0,
+                "Engagement %": float(a.get("engagement_rate", 0) or 0)
+            } for a in reversed(analyses)])
+            df["Datum"] = pd.to_datetime(df["Datum"])
+
+            # Views chart
+            fig_v = go.Figure()
+            fig_v.add_trace(go.Scatter(
+                x=df["Datum"], y=df["Ø Views"],
+                mode="lines+markers",
+                line=dict(color="#ff4d4d", width=2),
+                marker=dict(size=5, color="#ff4d4d", line=dict(color="#0a0a0b", width=2)),
+                fill="tozeroy", fillcolor="rgba(255,77,77,0.06)",
+                hovertemplate="%{y:,.0f} Views<extra></extra>",
+            ))
+            fig_v.update_layout(**PLOTLY_LAYOUT, height=170,
+                xaxis={**AXIS_X},
+                yaxis={**AXIS_Y, "tickformat": ",d"},
+            )
+            st.markdown('<div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(232,230,224,0.25);margin-bottom:8px;">Ø Views über Zeit</div>', unsafe_allow_html=True)
+            st.plotly_chart(fig_v, use_container_width=True, config={"displayModeBar": False})
+
+            st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+
+            # Engagement chart
+            fig_e = go.Figure()
+            fig_e.add_trace(go.Scatter(
+                x=df["Datum"], y=df["Engagement %"],
+                mode="lines+markers",
+                line=dict(color="#1d9e75", width=2),
+                marker=dict(size=5, color="#1d9e75", line=dict(color="#0a0a0b", width=2)),
+                fill="tozeroy", fillcolor="rgba(29,158,117,0.06)",
+                hovertemplate="%{y:.2f}%<extra></extra>",
+            ))
+            fig_e.update_layout(**PLOTLY_LAYOUT, height=130,
+                xaxis={**AXIS_X},
+                yaxis={**AXIS_Y, "ticksuffix": "%"},
+            )
+            st.markdown('<div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(232,230,224,0.25);margin-bottom:8px;margin-top:4px;">Engagement Rate</div>', unsafe_allow_html=True)
+            st.plotly_chart(fig_e, use_container_width=True, config={"displayModeBar": False})
+        else:
+            st.markdown('<div style="color:rgba(232,230,224,0.2);font-size:13px;text-align:center;padding:40px 0;">Mindestens 2 Analysen für Verlauf nötig</div>', unsafe_allow_html=True)
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with col_compare:
+        st.markdown('<div class="db-panel" style="height:100%">', unsafe_allow_html=True)
+        st.markdown('<div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(232,230,224,0.25);margin-bottom:12px;">Account-Vergleich — Ø Views</div>', unsafe_allow_html=True)
+
+        if latest and latest.get("top_accounts"):
+            my_views = int(latest.get("avg_views", 0) or 0)
+            comp_accounts = latest.get("top_accounts", [])
+            username = latest.get("username", "du")
+
+            st.markdown(f"""
+            <div style="margin-bottom:14px;">
+                <span class="acc-tag acc-tag-you">@{username}</span>
+                <span class="acc-tag acc-tag-top">Top-Performer</span>
+                <span class="acc-tag acc-tag-similar">Verglichen</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+            all_bars = [{"label": f"@{username}", "views": my_views, "color": "#ff4d4d"}]
+            for acc in comp_accounts[:4]:
+                all_bars.append({"label": f"@{acc}", "views": None, "color": "rgba(255,255,255,0.12)"})
+
+            max_views = max([b["views"] for b in all_bars if b["views"]], default=1)
+            bars_html = ""
+            for b in all_bars:
+                pct = round((b["views"] / max_views) * 100) if b["views"] else 12
+                val_str = fmt(b["views"]) if b["views"] else "n/a"
+                bars_html += f"""
+                <div class="compare-row">
+                    <div class="compare-label">
+                        <span>{b['label']}</span>
+                        <span style="color:{'#e8e6e0' if b['views'] else 'rgba(232,230,224,0.2)'};">{val_str}</span>
+                    </div>
+                    <div class="compare-track">
+                        <div style="width:{pct}%;height:100%;background:{b['color']};border-radius:3px;"></div>
+                    </div>
+                </div>"""
+            st.markdown(bars_html, unsafe_allow_html=True)
+
+            st.markdown(f"""
+            <div style="margin-top:18px;padding-top:14px;border-top:0.5px solid rgba(255,255,255,0.05);">
+                <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
+                            color:rgba(232,230,224,0.2);margin-bottom:5px;">Erkannte Nische</div>
+                <div style="font-size:13px;color:rgba(232,230,224,0.65);">{latest.get('nische','—')}</div>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown('<div style="color:rgba(232,230,224,0.2);font-size:13px;text-align:center;padding:24px 0;">Keine Vergleichsdaten</div>', unsafe_allow_html=True)
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown("<div style='height:22px'></div>", unsafe_allow_html=True)
+
+    # ── ROW 3: WATCHTIME + VERGLEICH SCREEN 2 ──
+    st.markdown('<div class="section-label">Watchtime-Analyse & Analysen-Vergleich</div>', unsafe_allow_html=True)
+
+    col_wt, col_hist = st.columns([1, 1.3])
+
+    with col_wt:
+        st.markdown('<div class="db-panel">', unsafe_allow_html=True)
+        st.markdown('<div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(232,230,224,0.25);margin-bottom:14px;">Watchtime-Analyse</div>', unsafe_allow_html=True)
+
+        wt = st.session_state.get("last_watchtime", {})
+        avg_wt = wt.get("avg_watchtime")
+        avg_dur = wt.get("avg_duration")
+        completion = round((avg_wt / avg_dur * 100), 1) if avg_wt and avg_dur and avg_dur > 0 else None
+        best_wt = wt.get("best_watchtime")
+        dropoff = wt.get("dropoff_sec")
+
+        def wt_card(label, value, sub):
+            return f'<div class="wt-card"><div class="wt-label">{label}</div><div class="wt-value">{value}</div><div class="wt-sub">{sub}</div></div>'
+
+        st.markdown(f"""<div class="wt-grid">
+            {wt_card("Ø Watchtime", f"{avg_wt:.1f}s" if avg_wt else "—", f"von Ø {avg_dur:.0f}s Länge" if avg_dur else "Nächste Analyse")}
+            {wt_card("Completion Rate", f"{completion}%" if completion else "—", "Nischen-Schnitt: ~40%")}
+            {wt_card("Bestes Video", f"{best_wt:.1f}s" if best_wt else "—", "Höchste Watchtime")}
+            {wt_card("Drop-Off", f"Sek. {int(dropoff)}" if dropoff else "—", "Optimiere deinen Hook")}
+        </div>""", unsafe_allow_html=True)
+
+        if wt.get("by_duration"):
+            bd = wt["by_duration"]
+            fig_wt = go.Figure(go.Bar(
+                x=list(bd.keys()),
+                y=list(bd.values()),
+                marker_color=["rgba(255,77,77,0.8)", "rgba(255,77,77,0.55)",
+                              "rgba(255,77,77,0.35)", "rgba(255,77,77,0.2)", "rgba(255,77,77,0.1)"],
+                text=[f"{v}%" for v in bd.values()],
+                textposition="outside",
+                textfont=dict(color="rgba(232,230,224,0.35)", size=10),
+            ))
+            fig_wt.update_layout(**PLOTLY_LAYOUT, height=130,
+                xaxis=dict(showgrid=False, zeroline=False, tickfont=dict(size=10)),
+                yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.04)", zeroline=False,
+                           ticksuffix="%", tickfont=dict(size=9), showticklabels=False,
+                           range=[0, max(bd.values()) * 1.35]),
+            )
+            st.markdown('<div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(232,230,224,0.25);margin:14px 0 8px;">Completion Rate nach Videolänge</div>', unsafe_allow_html=True)
+            st.plotly_chart(fig_wt, use_container_width=True, config={"displayModeBar": False})
+        else:
+            st.markdown("""
+            <div style="margin-top:12px;padding:16px;background:rgba(255,255,255,0.02);
+                        border:0.5px solid rgba(255,255,255,0.05);border-radius:8px;text-align:center;">
+                <div style="font-size:11px;color:rgba(232,230,224,0.2);">
+                    Watchtime-Daten werden bei der nächsten<br>Analyse automatisch geladen
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with col_hist:
+        st.markdown('<div class="db-panel">', unsafe_allow_html=True)
+        st.markdown('<div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(232,230,224,0.25);margin-bottom:14px;">Zwei Analysen vergleichen</div>', unsafe_allow_html=True)
+
+        if len(analyses) >= 2:
+            opts_labels = [f"📅 {a['created_at'][:10]}  ·  @{a['username']}  ·  {fmt(a['avg_views'])} Ø Views" for a in analyses]
+
+            col_sa, col_sb = st.columns(2)
+            with col_sa:
+                idx_a = st.selectbox("Analyse A", range(len(opts_labels)), format_func=lambda i: opts_labels[i], index=0, key="cmp_a")
+            with col_sb:
+                idx_b = st.selectbox("Analyse B", range(len(opts_labels)), format_func=lambda i: opts_labels[i], index=min(1, len(analyses)-1), key="cmp_b")
+
+            a_data = analyses[idx_a]
+            b_data = analyses[idx_b]
+
+            def diff_badge(va, vb):
+                if va is None or vb is None or float(vb) == 0:
+                    return ""
+                pct = round(((float(va) - float(vb)) / float(vb)) * 100, 1)
+                color = "#1d9e75" if pct >= 0 else "#ff4d4d"
+                sign = "+" if pct >= 0 else ""
+                return f'<span style="color:{color};font-family:DM Mono,monospace;font-size:11px;">{sign}{pct}%</span>'
+
+            rows = [
+                ("Ø Views", fmt(a_data.get("avg_views")), fmt(b_data.get("avg_views")), diff_badge(a_data.get("avg_views"), b_data.get("avg_views"))),
+                ("Engagement", f"{a_data.get('engagement_rate','—')}%", f"{b_data.get('engagement_rate','—')}%", diff_badge(a_data.get("engagement_rate"), b_data.get("engagement_rate"))),
+                ("Account", f"@{a_data.get('username','—')}", f"@{b_data.get('username','—')}", ""),
+                ("Nische", (a_data.get("nische","—") or "—")[:18], (b_data.get("nische","—") or "—")[:18], ""),
+                ("Datum", a_data["created_at"][:10], b_data["created_at"][:10], ""),
+            ]
+
+            tbl = """<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:10px;">
+              <thead><tr>
+                <th style="text-align:left;padding:7px 4px;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:rgba(232,230,224,0.2);border-bottom:0.5px solid rgba(255,255,255,0.06);">Metrik</th>
+                <th style="text-align:right;padding:7px 4px;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:rgba(255,77,77,0.55);border-bottom:0.5px solid rgba(255,255,255,0.06);">A</th>
+                <th style="text-align:right;padding:7px 4px;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:rgba(55,138,221,0.55);border-bottom:0.5px solid rgba(255,255,255,0.06);">B</th>
+                <th style="text-align:right;padding:7px 4px;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:rgba(232,230,224,0.2);border-bottom:0.5px solid rgba(255,255,255,0.06);">Δ</th>
+              </tr></thead><tbody>"""
+            for label, va, vb, dlt in rows:
+                tbl += f"""<tr>
+                  <td style="padding:8px 4px;color:rgba(232,230,224,0.35);border-bottom:0.5px solid rgba(255,255,255,0.04);">{label}</td>
+                  <td style="text-align:right;padding:8px 4px;font-family:'DM Mono',monospace;color:#e8e6e0;border-bottom:0.5px solid rgba(255,255,255,0.04);">{va}</td>
+                  <td style="text-align:right;padding:8px 4px;font-family:'DM Mono',monospace;color:rgba(232,230,224,0.45);border-bottom:0.5px solid rgba(255,255,255,0.04);">{vb}</td>
+                  <td style="text-align:right;padding:8px 4px;border-bottom:0.5px solid rgba(255,255,255,0.04);">{dlt}</td>
+                </tr>"""
+            tbl += "</tbody></table>"
+            st.markdown(tbl, unsafe_allow_html=True)
+
+            # Grouped bar chart comparison
+            fig_cmp = go.Figure()
+            fig_cmp.add_trace(go.Bar(
+                name="A", x=["Ø Views", "Engagement ×1000"],
+                y=[float(a_data.get("avg_views", 0) or 0), float(a_data.get("engagement_rate", 0) or 0) * 1000],
+                marker_color="rgba(255,77,77,0.7)",
+                hovertemplate="%{x}: %{y:,.0f}<extra>A</extra>",
+            ))
+            fig_cmp.add_trace(go.Bar(
+                name="B", x=["Ø Views", "Engagement ×1000"],
+                y=[float(b_data.get("avg_views", 0) or 0), float(b_data.get("engagement_rate", 0) or 0) * 1000],
+                marker_color="rgba(55,138,221,0.55)",
+                hovertemplate="%{x}: %{y:,.0f}<extra>B</extra>",
+            ))
+            fig_cmp.update_layout(**PLOTLY_LAYOUT, height=120, barmode="group",
+                xaxis=dict(showgrid=False, zeroline=False, tickfont=dict(size=10)),
+                yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.04)", zeroline=False,
+                           tickformat=",d", tickfont=dict(size=9), showticklabels=False),
+                margin=dict(l=0, r=0, t=10, b=0),
+            )
+            st.markdown("<div style='margin-top:14px;'></div>", unsafe_allow_html=True)
+            st.plotly_chart(fig_cmp, use_container_width=True, config={"displayModeBar": False})
+        else:
+            st.markdown('<div style="color:rgba(232,230,224,0.2);font-size:13px;text-align:center;padding:30px 0;">Mindestens 2 Analysen nötig</div>', unsafe_allow_html=True)
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown("<div style='height:22px'></div>", unsafe_allow_html=True)
+
+    # ── ROW 4: TOP / FLOP VIDEOS ──
+    st.markdown('<div class="section-label">Top & Flop Videos — Letzte Analyse</div>', unsafe_allow_html=True)
+
+    col_top, col_flop = st.columns(2)
+    last_top = st.session_state.get("last_top_videos", [])
+    last_flop = st.session_state.get("last_flop_videos", [])
+
+    def video_list_html(videos, empty_msg):
+        if not videos:
+            return f'<div style="color:rgba(232,230,224,0.18);font-size:12px;text-align:center;padding:20px 0;">{empty_msg}</div>'
+        out = ""
+        for i, v in enumerate(videos[:5]):
+            title = (v.get("beschreibung") or "")[:52] or "(kein Titel)"
+            views = fmt(v.get("views", 0))
+            eng = round((v.get("likes", 0) / max(v.get("views", 1), 1) * 100), 1)
+            datum = days_ago(v.get("datum", ""))
+            out += f"""
+            <div class="video-item">
+                <span class="video-rank">0{i+1}</span>
+                <div style="flex:1;min-width:0;">
+                    <div class="video-title">{title}</div>
+                    <div style="font-size:10px;color:rgba(232,230,224,0.2);font-family:'DM Mono',monospace;margin-top:2px;">{datum}</div>
+                </div>
+                <div style="text-align:right;flex-shrink:0;">
+                    <div class="video-views">{views}</div>
+                    <div class="video-eng">{eng}%</div>
+                </div>
+            </div>"""
+        return out
+
+    with col_top:
+        st.markdown('<div class="db-panel">', unsafe_allow_html=True)
+        st.markdown('<div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(232,230,224,0.25);margin-bottom:12px;">🏆 Top Videos</div>', unsafe_allow_html=True)
+        st.markdown(video_list_html(last_top, "Daten nach nächster Analyse verfügbar"), unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with col_flop:
+        st.markdown('<div class="db-panel">', unsafe_allow_html=True)
+        st.markdown('<div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(232,230,224,0.25);margin-bottom:12px;">📉 Flop Videos</div>', unsafe_allow_html=True)
+        st.markdown(video_list_html(last_flop, "Daten nach nächster Analyse verfügbar"), unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown("<div style='height:22px'></div>", unsafe_allow_html=True)
+
+    # ── ROW 5: ALLE ANALYSEN ──
+    st.markdown('<div class="section-label">Alle gespeicherten Analysen</div>', unsafe_allow_html=True)
+
+    for a in analyses:
+        with st.expander(f"📅 {a['created_at'][:10]}  ·  @{a['username']}  ·  {fmt(a['avg_views'])} Ø Views  ·  {a.get('engagement_rate','—')}% Eng"):
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown(f'<div style="font-size:10px;color:rgba(232,230,224,0.3);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">Nische</div><div style="font-size:14px;color:#e8e6e0;">{a.get("nische","—")}</div>', unsafe_allow_html=True)
+            with c2:
+                accs = ", ".join(a["top_accounts"]) if a.get("top_accounts") else "—"
+                st.markdown(f'<div style="font-size:10px;color:rgba(232,230,224,0.3);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">Verglichene Accounts</div><div style="font-size:12px;font-family:DM Mono,monospace;color:rgba(232,230,224,0.6);">{accs}</div>', unsafe_allow_html=True)
+            st.markdown(a.get("analysis_text", ""))
+            st.download_button(
+                "📥 Analyse downloaden",
+                data=a.get("analysis_text", ""),
+                file_name=f"analyse_{a['username']}_{a['created_at'][:10]}.txt",
+                key=f"dl_{a['id']}"
+            )
+
 
 # ─── MAIN APP ─────────────────────────────────────────────────────────────────
 
@@ -266,56 +814,67 @@ def show_app():
     premium = is_premium(user_id)
     used_free = has_used_free_analysis(user_id)
 
-    # Sidebar
     with st.sidebar:
-        st.markdown(f"👤 **{user_email}**")
+        st.markdown(f"""
+        <div class="sidebar-user">
+            <div class="sidebar-email">{user_email}</div>
+            {'<span class="sidebar-badge-premium">⚡ Premium</span>' if premium else '<span class="sidebar-badge-free">Free</span>'}
+        </div>
+        """, unsafe_allow_html=True)
+
         if premium:
-            st.success("🚀 Premium")
-        else:
-            st.info("✨ Free")
-        st.divider()
-        if premium:
-            page = st.radio("Navigation", ["🔍 Neue Analyse", "📊 Dashboard"])
+            page = st.radio("", ["🔍 Neue Analyse", "📊 Dashboard"], label_visibility="collapsed")
         else:
             page = "🔍 Neue Analyse"
-        st.divider()
-        if st.button("Ausloggen"):
+
+        if not premium:
+            st.markdown("""
+            <div style="background:rgba(255,77,77,0.04);border:0.5px solid rgba(255,77,77,0.12);
+                        border-radius:8px;padding:14px;margin:12px 0;">
+                <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
+                            color:rgba(255,77,77,0.5);margin-bottom:8px;">Premium</div>
+                <div style="font-size:11px;color:rgba(232,230,224,0.3);line-height:1.9;">
+                    ✓ Unbegrenzte Analysen<br>
+                    ✓ Dashboard + Verlauf<br>
+                    ✓ Watchtime-Analyse<br>
+                    ✓ Account-Vergleich
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+        if st.button("Ausloggen", use_container_width=True):
             sign_out()
 
     if page == "🔍 Neue Analyse":
-        st.title("🎵 TikTok AI Analyzer")
-        st.subheader("KI-gestützte Analyse mit Konkurrenzvergleich")
+        st.markdown("""
+        <div style="padding:22px 2px 12px;">
+            <div style="font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;
+                        color:rgba(232,230,224,0.2);margin-bottom:6px;">TikTok AI Analyzer</div>
+            <div style="font-size:24px;font-weight:800;color:#e8e6e0;">Neue Analyse starten</div>
+        </div>
+        """, unsafe_allow_html=True)
 
-        # Paywall Check
         if used_free and not premium:
-            st.warning("⚠️ Du hast deine kostenlose Analyse bereits genutzt.")
-            st.markdown("### 🚀 Upgrade auf Premium")
-            st.markdown("""
-            **Was du bekommst:**
-            - ✅ Unbegrenzte Analysen
-            - ✅ Dashboard mit Performance Verlauf
-            - ✅ Posting Streak Tracker
-            - ✅ KI Coaching jeden Montag
-            - ✅ Wachstums-Statistiken
-            """)
+            st.markdown("""<div class="upgrade-card">
+                <div style="font-size:20px;font-weight:800;color:#e8e6e0;margin-bottom:8px;">Kostenlose Analyse verbraucht</div>
+                <div style="font-size:14px;color:rgba(232,230,224,0.4);">Upgrade auf Premium für unbegrenzte Analysen</div>
+            </div>""", unsafe_allow_html=True)
             try:
                 checkout_url = create_checkout_session(user_email, user_id)
                 if checkout_url:
-                    st.markdown(f'<a href="{checkout_url}" target="_blank"><button style="background-color:#FF4B4B;color:white;border:none;padding:12px 24px;border-radius:8px;font-size:16px;cursor:pointer;">🚀 Jetzt upgraden — 19€/Monat</button></a>', unsafe_allow_html=True)
-                else:
-                    st.error("Checkout URL leer — prüfe Stripe Keys")
-            except Exception as e:
-                st.error(f"Stripe Fehler: {e}")
+                    st.markdown(f'<div style="text-align:center;margin-top:16px;"><a href="{checkout_url}" target="_blank"><button style="background:#ff4d4d;color:white;border:none;padding:14px 32px;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;font-family:Syne,sans-serif;">Jetzt upgraden — 19€/Monat →</button></a></div>', unsafe_allow_html=True)
+            except:
+                pass
             return
 
         if "step" not in st.session_state:
             st.session_state.step = 1
 
         if st.session_state.step == 1:
-            st.markdown("### Schritt 1: Deinen Account analysieren")
-            st.caption("ℹ️ Analyse basiert auf den letzten 50 Videos.")
-            username = st.text_input("TikTok Username", placeholder="z.B. lucasbenner")
-            if st.button("🔍 Account scannen", type="primary"):
+            st.markdown('<div style="font-size:13px;color:rgba(232,230,224,0.35);margin-bottom:18px;">Analyse basiert auf den letzten 50 Videos.</div>', unsafe_allow_html=True)
+            username = st.text_input("TikTok Username", placeholder="z.B. lucasbenner", label_visibility="collapsed")
+            if st.button("Account scannen →", type="primary"):
                 if username:
                     with st.spinner(f"@{username} wird gescannt..."):
                         data = scrape_tiktok_account(username)
@@ -332,14 +891,14 @@ def show_app():
                             except Exception as e:
                                 st.error(f"Fehler: {e}")
                     else:
-                        st.error("Account nicht gefunden.")
+                        st.error("Account nicht gefunden oder privat.")
 
         elif st.session_state.step == 2:
             suggestions = st.session_state.suggestions
             username = st.session_state.username
-            st.markdown("### Schritt 2: Vergleichs-Accounts auswählen")
-            st.info(f"**Erkannte Nische:** {suggestions['nische']}")
-            st.caption("💡 Du kannst Usernamen direkt bearbeiten.")
+            st.markdown("### Schritt 2: Vergleichs-Accounts")
+            st.markdown(f'<div style="display:inline-block;background:rgba(55,138,221,0.08);border:0.5px solid rgba(55,138,221,0.2);border-radius:6px;padding:4px 12px;font-size:12px;color:#378add;margin-bottom:16px;">Nische: {suggestions["nische"]}</div>', unsafe_allow_html=True)
+            st.caption("Du kannst Usernamen direkt bearbeiten.")
             selected = []
             col1, col2, col3 = st.columns(3)
             top_accounts = [a for a in suggestions["accounts"] if a["kategorie"] == "top_performer"]
@@ -348,7 +907,7 @@ def show_app():
             with col1:
                 st.markdown("#### 🏆 Top Performer")
                 for i, acc in enumerate(top_accounts):
-                    edited = st.text_input("✏️ Username", value=acc["username"], key=f"e_{acc['username']}_{i}")
+                    edited = st.text_input("Username", value=acc["username"], key=f"e_{acc['username']}_{i}")
                     checked = st.checkbox("Einschließen", key=f"c_{acc['username']}_{i}", value=True)
                     st.caption(acc["grund"])
                     st.divider()
@@ -357,7 +916,7 @@ def show_app():
             with col2:
                 st.markdown("#### 🔄 Ähnliche Accounts")
                 for i, acc in enumerate(similar_accounts):
-                    edited = st.text_input("✏️ Username", value=acc["username"], key=f"e_{acc['username']}_{i}_s")
+                    edited = st.text_input("Username", value=acc["username"], key=f"e_{acc['username']}_{i}_s")
                     checked = st.checkbox("Einschließen", key=f"c_{acc['username']}_{i}_s", value=True)
                     st.caption(acc["grund"])
                     st.divider()
@@ -366,7 +925,7 @@ def show_app():
             with col3:
                 st.markdown("#### 📉 Kleinere Accounts")
                 for i, acc in enumerate(smaller_accounts):
-                    edited = st.text_input("✏️ Username", value=acc["username"], key=f"e_{acc['username']}_{i}_k")
+                    edited = st.text_input("Username", value=acc["username"], key=f"e_{acc['username']}_{i}_k")
                     checked = st.checkbox("Einschließen", key=f"c_{acc['username']}_{i}_k", value=False)
                     st.caption(acc["grund"])
                     st.divider()
@@ -378,7 +937,7 @@ def show_app():
                     st.session_state.step = 1
                     st.rerun()
             with col_next:
-                if st.button("🚀 Vergleich starten", type="primary"):
+                if st.button("Vergleich starten →", type="primary"):
                     if selected:
                         st.session_state.selected_accounts = selected
                         st.session_state.step = 3
@@ -397,17 +956,17 @@ def show_app():
                 data = scrape_tiktok_account(acc)
                 if data and len(data) > 0:
                     extracted = extract_video_data(data)
-                    newest = extracted.get("newest_30", [])
+                    newest_check = extracted.get("newest_30", [])
                     now = datetime.now(timezone.utc)
                     recent = []
-                    for v in newest:
+                    for v in newest_check:
                         try:
                             dt = datetime.fromisoformat(v["datum"].replace("Z", "+00:00"))
                             if (now - dt).days <= 30:
                                 recent.append(v)
                         except:
                             pass
-                    if len(newest) == 0:
+                    if len(newest_check) == 0:
                         status_text.text(f"⚠️ @{acc} ist privat — übersprungen")
                         time.sleep(2)
                     elif len(recent) == 0:
@@ -416,82 +975,100 @@ def show_app():
                     else:
                         comparison_data[acc] = extracted
                 progress_bar.progress((i + 1) / len(selected_accounts))
+
             status_text.text("KI analysiert alle Daten...")
             main_videos = extract_video_data(st.session_state.main_data)
             newest = main_videos.get("newest_30", [])
+            top_10 = main_videos.get("top_10", [])
+            bottom_10 = main_videos.get("bottom_10", [])
+
             analysis, avg_views, engagement = full_comparison_analysis(username, main_videos, comparison_data, suggestions["nische"])
             save_analysis(user_id, username, suggestions["nische"], avg_views, engagement, list(comparison_data.keys()), analysis)
+
+            # Save watchtime + video data to session for dashboard
+            watchtime_vals = [v.get("watchtime", 0) for v in newest if v.get("watchtime")]
+            dur_vals = [v.get("dauer", 0) for v in newest if v.get("dauer")]
+            if watchtime_vals:
+                avg_wt = sum(watchtime_vals) / len(watchtime_vals)
+                avg_dur_v = sum(dur_vals) / len(dur_vals) if dur_vals else 0
+                by_dur = {}
+                for v in newest:
+                    d = v.get("dauer", 0)
+                    wt = v.get("watchtime", 0)
+                    if d > 0 and wt > 0:
+                        bucket = "<10s" if d < 10 else "10-20s" if d < 20 else "20-30s" if d < 30 else "30-60s" if d < 60 else ">60s"
+                        if bucket not in by_dur:
+                            by_dur[bucket] = []
+                        by_dur[bucket].append(wt / d * 100)
+                by_dur_avg = {k: round(sum(vals)/len(vals), 1) for k, vals in by_dur.items()}
+                st.session_state["last_watchtime"] = {
+                    "avg_watchtime": round(avg_wt, 1),
+                    "avg_duration": round(avg_dur_v, 1),
+                    "best_watchtime": round(max(watchtime_vals), 1),
+                    "dropoff_sec": round(avg_wt, 0),
+                    "by_duration": by_dur_avg,
+                }
+
+            st.session_state["last_top_videos"] = top_10
+            st.session_state["last_flop_videos"] = bottom_10
+
             progress_bar.empty()
             status_text.empty()
-            col1, col2, col3, col4 = st.columns(4)
+
+            # Results metrics
             total_views = sum(v["views"] for v in newest)
             total_likes = sum(v["likes"] for v in newest)
             avg_v = total_views // len(newest) if newest else 0
             eng = round((total_likes / total_views * 100) if total_views > 0 else 0, 2)
-            with col1:
-                st.metric("👁️ Gesamt Views", f"{total_views:,}")
-            with col2:
-                st.metric("❤️ Gesamt Likes", f"{total_likes:,}")
-            with col3:
-                st.metric("📊 Ø Views", f"{avg_v:,}")
-            with col4:
-                st.metric("💬 Engagement", f"{eng}%")
+
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                st.markdown('<div class="metric-accent-red"></div>', unsafe_allow_html=True)
+                st.metric("GESAMT VIEWS", fmt(total_views))
+            with c2:
+                st.markdown('<div class="metric-accent-amber"></div>', unsafe_allow_html=True)
+                st.metric("GESAMT LIKES", fmt(total_likes))
+            with c3:
+                st.markdown('<div class="metric-accent-teal"></div>', unsafe_allow_html=True)
+                st.metric("Ø VIEWS", fmt(avg_v))
+            with c4:
+                st.markdown('<div class="metric-accent-blue"></div>', unsafe_allow_html=True)
+                st.metric("ENGAGEMENT", f"{eng}%")
+
             st.divider()
-            st.markdown("## 🤖 KI Vergleichsanalyse")
+            st.markdown("## KI Vergleichsanalyse")
             st.markdown(analysis)
             st.divider()
 
             if not premium:
-                st.success("🎉 Das war deine kostenlose Analyse!")
-                st.markdown("### 🚀 Mehr Features mit Premium")
-                st.markdown("Dashboard, Verlauf, KI Coaching und mehr für nur **19€/Monat**")
+                st.markdown("""<div class="upgrade-card">
+                    <div style="font-size:18px;font-weight:800;color:#e8e6e0;margin-bottom:6px;">Das war deine kostenlose Analyse</div>
+                    <div style="font-size:13px;color:rgba(232,230,224,0.4);">Premium: Dashboard, Verlauf, Watchtime & mehr</div>
+                </div>""", unsafe_allow_html=True)
                 try:
                     checkout_url = create_checkout_session(user_email, user_id)
                     if checkout_url:
-                        st.markdown(f'<a href="{checkout_url}" target="_blank"><button style="background-color:#FF4B4B;color:white;border:none;padding:12px 24px;border-radius:8px;font-size:16px;cursor:pointer;">🚀 Jetzt upgraden — 19€/Monat</button></a>', unsafe_allow_html=True)
-                    else:
-                        st.info("Kontaktiere uns: upgrade@tiktok-analyser.de")
-                except Exception as e:
-                    st.info("Kontaktiere uns: upgrade@tiktok-analyser.de")
+                        st.markdown(f'<div style="text-align:center;margin-top:14px;"><a href="{checkout_url}" target="_blank"><button style="background:#ff4d4d;color:white;border:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">Jetzt upgraden — 19€/Monat →</button></a></div>', unsafe_allow_html=True)
+                except:
+                    pass
 
             col_dl, col_new = st.columns(2)
             with col_dl:
                 st.download_button("📥 Analyse downloaden", data=analysis, file_name=f"analyse_{username}.txt", mime="text/plain")
             with col_new:
                 if st.button("🔄 Neue Analyse"):
-                    st.session_state.step = 1
-                    st.session_state.main_data = None
-                    st.session_state.suggestions = None
-                    st.session_state.selected_accounts = []
+                    for k in ["step", "main_data", "suggestions", "selected_accounts"]:
+                        st.session_state.pop(k, None)
                     st.rerun()
 
     elif page == "📊 Dashboard" and premium:
-        st.title("📊 Dashboard")
         analyses = load_analyses(user_id)
-        if analyses:
-            st.success(f"✅ {len(analyses)} Analysen gespeichert")
-            if len(analyses) > 1:
-                st.markdown("### 📈 Performance Verlauf")
-                import pandas as pd
-                df = pd.DataFrame([{"Datum": a["created_at"][:10], "Ø Views": a["avg_views"], "Engagement %": a["engagement_rate"]} for a in analyses])
-                df = df.sort_values("Datum")
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.line_chart(df.set_index("Datum")["Ø Views"])
-                with col2:
-                    st.line_chart(df.set_index("Datum")["Engagement %"])
-            st.markdown("### 📋 Alle Analysen")
-            for a in analyses:
-                with st.expander(f"📅 {a['created_at'][:10]} — @{a['username']} — Ø {a['avg_views']:,} Views — {a['engagement_rate']}% Engagement"):
-                    st.markdown(f"**Nische:** {a['nische']}")
-                    st.markdown(f"**Verglichene Accounts:** {', '.join(a['top_accounts']) if a['top_accounts'] else 'keine'}")
-                    st.divider()
-                    st.markdown(a["analysis_text"])
-                    st.download_button("📥 Download", data=a["analysis_text"], file_name=f"analyse_{a['created_at'][:10]}.txt", key=f"dl_{a['id']}")
-        else:
-            st.info("Noch keine Analysen gespeichert. Starte deine erste Analyse!")
+        show_dashboard(user_id, user_email, premium, analyses)
+
 
 # ─── ROUTER ───────────────────────────────────────────────────────────────────
+
+inject_css()
 
 if "user" not in st.session_state:
     show_auth()
