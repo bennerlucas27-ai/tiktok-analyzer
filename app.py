@@ -298,8 +298,14 @@ def show_app():
             - ✅ KI Coaching jeden Montag
             - ✅ Wachstums-Statistiken
             """)
-            if st.button("🚀 Jetzt upgraden — 19€/Monat", type="primary"):
-                
+            try:
+                checkout_url = create_checkout_session(user_email, user_id)
+                if checkout_url:
+                    st.markdown(f'<a href="{checkout_url}" target="_blank"><button style="background-color:#FF4B4B;color:white;border:none;padding:12px 24px;border-radius:8px;font-size:16px;cursor:pointer;">🚀 Jetzt upgraden — 19€/Monat</button></a>', unsafe_allow_html=True)
+                else:
+                    st.error("Checkout URL leer — prüfe Stripe Keys")
+            except Exception as e:
+                st.error(f"Stripe Fehler: {e}")
             return
 
         if "step" not in st.session_state:
