@@ -1,7 +1,8 @@
 streamlit==1.45.1
-anthropic==0.40.0
+anthropic==0.52.0
 requests==2.32.3
 python-dotenv==1.0.1
-supabase==2.10.0
+supabase
 pandas==2.2.3
-stripe==11.4.0
+stripe
+plotly==5.22.0
