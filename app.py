@@ -463,6 +463,142 @@ def show_dashboard(user_id, user_email, premium, analyses):
         st.info("Noch keine Analyse vorhanden. Starte deine erste Analyse!")
         return
 
+    # ── TÄGLICHE KI ANWEISUNG ──
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    briefing_key = f"daily_briefing_{latest.get('id','')}_{today_str}"
+    cached_briefing = st.session_state.get(briefing_key)
+
+    # Gather data for briefing
+    video_dates_raw = latest.get("video_dates") or []
+    top_videos = sorted(video_dates_raw, key=lambda x: x.get("views", 0), reverse=True)[:5]
+    flop_videos = sorted(video_dates_raw, key=lambda x: x.get("views", 0))[:5]
+
+    # Best posting hours from top videos
+    hour_views = {}
+    for v in video_dates_raw:
+        try:
+            dt = datetime.fromisoformat(v["datum"].replace("Z", "+00:00"))
+            h = dt.hour
+            hour_views.setdefault(h, []).append(v.get("views", 0))
+        except:
+            pass
+    best_hours = sorted(hour_views.keys(), key=lambda h: sum(hour_views[h])/len(hour_views[h]), reverse=True)[:3] if hour_views else []
+    best_hours_str = " · ".join([f"{h}:00 Uhr" for h in sorted(best_hours)]) if best_hours else "Daten fehlen noch"
+
+    # Auto-generate if not cached
+    if not cached_briefing:
+        try:
+            briefing_prompt = f"""Du bist ein persönlicher TikTok Coach. Erstelle eine konkrete Tagesanweisung für heute ({today_str}) für @{latest.get('username','—')}.
+
+ACCOUNT DATEN:
+- Nische: {latest.get('nische','—')}
+- Ø Views: {fmt(latest.get('avg_views'))}
+- Engagement: {latest.get('engagement_rate','—')}%
+- Beste Posting-Zeiten: {best_hours_str}
+- Top Videos (Beschreibung + Views): {json.dumps(top_videos, ensure_ascii=False)}
+- Schlechteste Videos: {json.dumps(flop_videos, ensure_ascii=False)}
+
+Erstelle eine Tagesanweisung mit EXAKT diesem Format (kein Intro, direkt loslegen):
+
+🎣 HOOK DES TAGES
+[Einen konkreten Hook-Satz den die Person heute nutzen soll — fertig formuliert, nicht erklären]
+Warum: [1 Satz warum dieser Hook bei diesem Account funktioniert]
+
+🎬 FORMAT
+Länge: [X Sekunden] · Stil: [beschreibend] · Ton: [beschreibend]
+
+⏰ JETZT POSTEN
+[Uhrzeit und kurze Begründung basierend auf den Daten]
+
+💡 THEMEN-IDEE
+[Eine konkrete Content-Idee für heute — spezifisch zur Nische]
+
+#️⃣ HASHTAGS
+[8-10 konkrete Hashtags — Mix aus groß und nischen-spezifisch]
+
+⚡ EINE SACHE DIE HEUTE ANDERS MACHEN
+[Ein konkreter Unterschied zu den Flop-Videos]
+
+Auf Deutsch. Direkt. Kein Fließtext."""
+
+            msg = client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=800,
+                messages=[{"role": "user", "content": briefing_prompt}]
+            )
+            cached_briefing = msg.content[0].text
+            st.session_state[briefing_key] = cached_briefing
+        except:
+            cached_briefing = None
+
+    # Render briefing card
+    st.markdown('<div class="section-label">Heutige Anweisung</div>', unsafe_allow_html=True)
+
+    if cached_briefing:
+        # Parse sections for styled rendering
+        sections = []
+        current_title = ""
+        current_body = []
+        for line in cached_briefing.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            is_header = any(line.startswith(e) for e in ["🎣","🎬","⏰","💡","#️⃣","⚡"])
+            if is_header:
+                if current_title:
+                    sections.append((current_title, "\n".join(current_body).strip()))
+                current_title = line
+                current_body = []
+            else:
+                current_body.append(line)
+        if current_title:
+            sections.append((current_title, "\n".join(current_body).strip()))
+
+        # Render as horizontal cards
+        n = len(sections)
+        if n > 0:
+            cols = st.columns(min(n, 3))
+            for i, (title, body) in enumerate(sections):
+                with cols[i % 3]:
+                    body_html = body.replace("\n", "<br>")
+                    st.markdown(f"""
+                    <div style="background:rgba(255,255,255,0.02);border:0.5px solid rgba(255,255,255,0.07);
+                                border-radius:10px;padding:16px 18px;margin-bottom:10px;height:100%;">
+                        <div style="font-size:13px;font-weight:700;color:#e8e6e0;margin-bottom:8px;">{title}</div>
+                        <div style="font-size:12px;color:rgba(232,230,224,0.55);line-height:1.7;">{body_html}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            # Second row if more than 3 sections
+            if n > 3:
+                cols2 = st.columns(min(n - 3, 3))
+                for i, (title, body) in enumerate(sections[3:]):
+                    with cols2[i % 3]:
+                        body_html = body.replace("\n", "<br>")
+                        st.markdown(f"""
+                        <div style="background:rgba(255,255,255,0.02);border:0.5px solid rgba(255,255,255,0.07);
+                                    border-radius:10px;padding:16px 18px;margin-bottom:10px;height:100%;">
+                            <div style="font-size:13px;font-weight:700;color:#e8e6e0;margin-bottom:8px;">{title}</div>
+                            <div style="font-size:12px;color:rgba(232,230,224,0.55);line-height:1.7;">{body_html}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+        col_refresh, _ = st.columns([1, 4])
+        with col_refresh:
+            if st.button("🔄 Neue Anweisung", key="refresh_briefing"):
+                del st.session_state[briefing_key]
+                st.rerun()
+    else:
+        st.markdown("""
+        <div style="background:rgba(255,255,255,0.02);border:0.5px solid rgba(255,255,255,0.07);
+                    border-radius:10px;padding:20px;text-align:center;">
+            <div style="font-size:13px;color:rgba(232,230,224,0.3);">
+                Anweisung wird nach der nächsten Analyse verfügbar — Video-Daten werden benötigt.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
     # ── HERO METRICS ──
     st.markdown('<div class="section-label">Performance — Letzte Analyse</div>', unsafe_allow_html=True)
 
