@@ -60,6 +60,9 @@ def create_checkout_session(user_email, user_id):
         )
         return session.url
     except Exception as e:
+        st.error(f"Stripe Error: {str(e)}")
+        st.error(f"Price ID: {STRIPE_PRICE_ID}")
+        st.error(f"Key starts with: {stripe.api_key[:10] if stripe.api_key else 'None'}")
         return None
 
 def has_used_free_analysis(user_id):
