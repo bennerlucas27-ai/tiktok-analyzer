@@ -329,7 +329,7 @@ Sei konkret und direkt."""
     message = client.messages.create(model="claude-sonnet-4-6", max_tokens=4000, messages=[{"role": "user", "content": prompt}])
     return message.content[0].text, main_avg_views, main_avg_engagement
 
-def save_analysis(user_id, username, nische, avg_views, engagement_rate, comparison_accounts, analysis_text):
+def save_analysis(user_id, username, nische, avg_views, engagement_rate, comparison_accounts, analysis_text, video_dates=None):
     try:
         supabase.table("analyses").insert({
             "user_id": user_id,
@@ -338,7 +338,8 @@ def save_analysis(user_id, username, nische, avg_views, engagement_rate, compari
             "avg_views": avg_views,
             "engagement_rate": engagement_rate,
             "top_accounts": comparison_accounts,
-            "analysis_text": analysis_text
+            "analysis_text": analysis_text,
+            "video_dates": video_dates or []
         }).execute()
     except Exception as e:
         st.warning(f"Speichern fehlgeschlagen: {e}")
@@ -741,7 +742,201 @@ def show_dashboard(user_id, user_email, premium, analyses):
 
     st.markdown("<div style='height:22px'></div>", unsafe_allow_html=True)
 
-    # ── ROW 4: TOP / FLOP VIDEOS ──
+    # ── ROW 4: STREAK TRACKER + KALENDER + KI COACHING ──
+    st.markdown('<div class="section-label">Posting Streak & KI Coaching</div>', unsafe_allow_html=True)
+
+    # Collect all video dates from latest analysis
+    video_dates_raw = latest.get("video_dates") or []
+
+    # Parse dates
+    posting_days = set()
+    views_by_day = {}
+    for v in video_dates_raw:
+        try:
+            dt = datetime.fromisoformat(v["datum"].replace("Z", "+00:00"))
+            day_str = dt.strftime("%Y-%m-%d")
+            posting_days.add(day_str)
+            views_by_day[day_str] = views_by_day.get(day_str, 0) + int(v.get("views", 0))
+        except:
+            pass
+
+    # Streak calculation
+    today = datetime.now(timezone.utc).date()
+    streak = 0
+    check_day = today
+    while str(check_day) in posting_days:
+        streak += 1
+        check_day = check_day.replace(day=check_day.day - 1) if check_day.day > 1 else (
+            check_day.replace(month=check_day.month - 1, day=28) if check_day.month > 1
+            else check_day.replace(year=check_day.year - 1, month=12, day=28)
+        )
+
+    total_posts = len(video_dates_raw)
+    active_days = len(posting_days)
+    avg_views_per_day = int(sum(views_by_day.values()) / max(active_days, 1))
+
+    col_streak, col_cal, col_coach = st.columns([1, 1.6, 1.4])
+
+    with col_streak:
+        st.markdown('<div class="db-panel" style="height:100%">', unsafe_allow_html=True)
+        st.markdown('<div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(232,230,224,0.25);margin-bottom:16px;">Posting Streak</div>', unsafe_allow_html=True)
+
+        streak_color = "#ff4d4d" if streak >= 7 else "#f5a623" if streak >= 3 else "#1d9e75" if streak >= 1 else "rgba(232,230,224,0.2)"
+        st.markdown(f"""
+        <div style="text-align:center;padding:10px 0 16px;">
+            <div style="font-family:'DM Mono',monospace;font-size:52px;font-weight:500;color:{streak_color};line-height:1;">
+                {streak}
+            </div>
+            <div style="font-size:11px;color:rgba(232,230,224,0.3);margin-top:4px;letter-spacing:0.06em;">
+                {'🔥 Tage in Folge' if streak > 0 else 'Heute noch posten!'}
+            </div>
+        </div>
+        <div style="border-top:0.5px solid rgba(255,255,255,0.05);padding-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div style="text-align:center;">
+                <div style="font-family:'DM Mono',monospace;font-size:18px;color:#e8e6e0;">{total_posts}</div>
+                <div style="font-size:10px;color:rgba(232,230,224,0.25);margin-top:2px;">Videos gesamt</div>
+            </div>
+            <div style="text-align:center;">
+                <div style="font-family:'DM Mono',monospace;font-size:18px;color:#e8e6e0;">{active_days}</div>
+                <div style="font-size:10px;color:rgba(232,230,224,0.25);margin-top:2px;">Posting-Tage</div>
+            </div>
+        </div>
+        <div style="margin-top:12px;text-align:center;">
+            <div style="font-family:'DM Mono',monospace;font-size:16px;color:#e8e6e0;">{fmt(avg_views_per_day)}</div>
+            <div style="font-size:10px;color:rgba(232,230,224,0.25);margin-top:2px;">Ø Views pro Post-Tag</div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with col_cal:
+        st.markdown('<div class="db-panel" style="height:100%">', unsafe_allow_html=True)
+        st.markdown('<div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(232,230,224,0.25);margin-bottom:14px;">Kalender — Letzte 42 Tage</div>', unsafe_allow_html=True)
+
+        # Build 6-week calendar
+        from datetime import timedelta
+        cal_start = today - timedelta(days=41)
+        weeks = []
+        week = []
+        cur = cal_start
+        # Align to Monday
+        weekday_offset = cal_start.weekday()
+        for _ in range(weekday_offset):
+            week.append(None)
+        while cur <= today:
+            week.append(cur)
+            if len(week) == 7:
+                weeks.append(week)
+                week = []
+            cur += timedelta(days=1)
+        if week:
+            while len(week) < 7:
+                week.append(None)
+            weeks.append(week)
+
+        day_labels = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+        cal_html = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:8px;">'
+        for dl in day_labels:
+            cal_html += f'<div style="text-align:center;font-size:9px;color:rgba(232,230,224,0.2);font-weight:700;letter-spacing:0.06em;padding-bottom:2px;">{dl}</div>'
+        cal_html += '</div><div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;">'
+
+        for week in weeks:
+            for day in week:
+                if day is None:
+                    cal_html += '<div></div>'
+                    continue
+                day_str = str(day)
+                is_today = day == today
+                has_post = day_str in posting_days
+                views = views_by_day.get(day_str, 0)
+
+                if is_today:
+                    bg = "rgba(55,138,221,0.3)"
+                    border = "rgba(55,138,221,0.6)"
+                elif has_post:
+                    # Color intensity by views
+                    max_v = max(views_by_day.values()) if views_by_day else 1
+                    intensity = min(views / max_v, 1.0)
+                    r = int(29 + (255-29) * (1-intensity))
+                    g = int(158 * intensity)
+                    b = int(117 * intensity)
+                    bg = f"rgba({255-int(226*intensity)},{int(158*intensity)},{int(117*intensity)},0.7)"
+                    bg = f"rgba(29,158,117,{0.25 + intensity * 0.65:.2f})"
+                    border = "rgba(29,158,117,0.4)"
+                else:
+                    bg = "rgba(255,255,255,0.03)"
+                    border = "rgba(255,255,255,0.06)"
+
+                tooltip = f"{views:,} Views" if has_post else "Kein Post"
+                cal_html += f'<div title="{day.day}. — {tooltip}" style="aspect-ratio:1;background:{bg};border:0.5px solid {border};border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:9px;font-family:DM Mono,monospace;color:rgba(232,230,224,{0.7 if has_post or is_today else 0.2});">{day.day}</div>'
+
+        cal_html += '</div>'
+        cal_html += """
+        <div style="display:flex;align-items:center;gap:16px;margin-top:12px;">
+            <div style="display:flex;align-items:center;gap:5px;">
+                <div style="width:10px;height:10px;border-radius:2px;background:rgba(29,158,117,0.8);"></div>
+                <span style="font-size:10px;color:rgba(232,230,224,0.3);">Gepostet</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:5px;">
+                <div style="width:10px;height:10px;border-radius:2px;background:rgba(255,255,255,0.03);border:0.5px solid rgba(255,255,255,0.1);"></div>
+                <span style="font-size:10px;color:rgba(232,230,224,0.3);">Kein Post</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:5px;">
+                <div style="width:10px;height:10px;border-radius:2px;background:rgba(55,138,221,0.3);border:0.5px solid rgba(55,138,221,0.6);"></div>
+                <span style="font-size:10px;color:rgba(232,230,224,0.3);">Heute</span>
+            </div>
+        </div>"""
+        st.markdown(cal_html, unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with col_coach:
+        st.markdown('<div class="db-panel" style="height:100%">', unsafe_allow_html=True)
+        st.markdown('<div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(232,230,224,0.25);margin-bottom:14px;">KI Coaching</div>', unsafe_allow_html=True)
+
+        coaching_key = f"coaching_{latest.get('id','')}"
+        cached_coaching = st.session_state.get(coaching_key)
+
+        if cached_coaching:
+            st.markdown(f'<div style="font-size:13px;color:rgba(232,230,224,0.75);line-height:1.7;">{cached_coaching}</div>', unsafe_allow_html=True)
+        else:
+            st.markdown(f"""
+            <div style="font-size:12px;color:rgba(232,230,224,0.35);line-height:1.7;margin-bottom:14px;">
+                Basierend auf deinen letzten Daten:<br>
+                <span style="color:rgba(232,230,224,0.55);">Ø {fmt(latest.get('avg_views'))} Views · {latest.get('engagement_rate','—')}% Eng · {active_days} Posting-Tage · Streak: {streak}</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+            if st.button("🤖 KI Coaching generieren", type="primary", use_container_width=True):
+                with st.spinner("KI analysiert deine Daten..."):
+                    try:
+                        top_videos_info = sorted(video_dates_raw, key=lambda x: x.get("views", 0), reverse=True)[:3]
+                        coaching_prompt = f"""Du bist ein TikTok Growth Coach. Gib kurze, direkte Wachstumsempfehlungen für diese Woche.
+
+DATEN:
+- Account: @{latest.get('username','—')}
+- Nische: {latest.get('nische','—')}
+- Ø Views: {fmt(latest.get('avg_views'))}
+- Engagement: {latest.get('engagement_rate','—')}%
+- Posting-Streak: {streak} Tage
+- Aktive Posting-Tage (letzte 30d): {active_days}
+- Top 3 Videos: {json.dumps(top_videos_info, ensure_ascii=False)}
+
+Gib genau 4 konkrete Empfehlungen für diese Woche. Jede Empfehlung max. 2 Sätze.
+Format: Nummerierte Liste, direkt und actionable. Kein Intro, keine Zusammenfassung. Auf Deutsch."""
+                        msg = client.messages.create(
+                            model="claude-sonnet-4-6",
+                            max_tokens=500,
+                            messages=[{"role": "user", "content": coaching_prompt}]
+                        )
+                        coaching_text = msg.content[0].text
+                        st.session_state[coaching_key] = coaching_text
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Fehler: {e}")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown("<div style='height:22px'></div>", unsafe_allow_html=True)
+
+    # ── ROW 5: TOP / FLOP VIDEOS ──
     st.markdown('<div class="section-label">Top & Flop Videos — Letzte Analyse</div>', unsafe_allow_html=True)
 
     col_top, col_flop = st.columns(2)
@@ -983,7 +1178,8 @@ def show_app():
             bottom_10 = main_videos.get("bottom_10", [])
 
             analysis, avg_views, engagement = full_comparison_analysis(username, main_videos, comparison_data, suggestions["nische"])
-            save_analysis(user_id, username, suggestions["nische"], avg_views, engagement, list(comparison_data.keys()), analysis)
+            video_dates_list = [{"datum": v["datum"], "views": v["views"], "beschreibung": (v.get("beschreibung") or "")[:80]} for v in main_videos.get("all", []) if v.get("datum")]
+            save_analysis(user_id, username, suggestions["nische"], avg_views, engagement, list(comparison_data.keys()), analysis, video_dates=video_dates_list)
 
             # Save watchtime + video data to session for dashboard
             watchtime_vals = [v.get("watchtime", 0) for v in newest if v.get("watchtime")]
