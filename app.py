@@ -60,9 +60,6 @@ def create_checkout_session(user_email, user_id):
         )
         return session.url
     except Exception as e:
-        st.error(f"Stripe Error: {str(e)}")
-        st.error(f"Price ID: {STRIPE_PRICE_ID}")
-        st.error(f"Key starts with: {stripe.api_key[:10] if stripe.api_key else 'None'}")
         return None
 
 def has_used_free_analysis(user_id):
@@ -453,9 +450,9 @@ def show_app():
                     if checkout_url:
                         st.markdown(f'<a href="{checkout_url}" target="_blank"><button style="background-color:#FF4B4B;color:white;border:none;padding:12px 24px;border-radius:8px;font-size:16px;cursor:pointer;">🚀 Jetzt upgraden — 19€/Monat</button></a>', unsafe_allow_html=True)
                     else:
-                        st.error("Checkout URL leer — prüfe Stripe Keys")
+                        st.info("Kontaktiere uns: upgrade@tiktok-analyser.de")
                 except Exception as e:
-                    st.error(f"Stripe Fehler: {e}")
+                    st.info("Kontaktiere uns: upgrade@tiktok-analyser.de")
 
             col_dl, col_new = st.columns(2)
             with col_dl:
