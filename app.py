@@ -864,7 +864,10 @@ Auf Deutsch. Direkt. Kein Fließtext."""
                 marker_color="rgba(55,138,221,0.55)",
                 hovertemplate="%{x}: %{y:,.0f}<extra>B</extra>",
             ))
-            fig_cmp.update_layout(**PLOTLY_LAYOUT, height=120, barmode="group",
+            fig_cmp.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(family="DM Mono", color="rgba(232,230,224,0.35)", size=10),
+                height=120, barmode="group", showlegend=False,
                 xaxis=dict(showgrid=False, zeroline=False, tickfont=dict(size=10)),
                 yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.04)", zeroline=False,
                            tickformat=",d", tickfont=dict(size=9), showticklabels=False),
