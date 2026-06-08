@@ -538,16 +538,13 @@ Nur diese 5 Zeilen. Kein weiterer Text."""
 
     if parsed.get("HOOK"):
         hashtags = parsed.get("HASHTAGS", "")
-        # Make hashtags smaller/muted
         hashtags_html = " ".join([
             f'<span style="color:rgba(232,230,224,0.35);font-size:11px;">{h}</span>'
             for h in hashtags.split() if h.startswith("#")
         ])
-
         st.markdown(f"""
         <div style="background:rgba(255,255,255,0.02);border:0.5px solid rgba(255,255,255,0.07);
                     border-radius:12px;padding:22px 26px;margin-bottom:6px;">
-
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
                 <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
                             color:rgba(232,230,224,0.25);">{today_display}</div>
@@ -555,11 +552,9 @@ Nur diese 5 Zeilen. Kein weiterer Text."""
                     @{latest.get('username','—')} · {latest.get('nische','—')[:30]}
                 </div>
             </div>
-
             <div style="font-size:20px;font-weight:700;color:#e8e6e0;line-height:1.3;margin-bottom:20px;">
                 🎣 &nbsp;{parsed.get('HOOK','—')}
             </div>
-
             <div style="display:flex;align-items:center;gap:24px;padding:14px 0;
                         border-top:0.5px solid rgba(255,255,255,0.05);
                         border-bottom:0.5px solid rgba(255,255,255,0.05);margin-bottom:16px;">
@@ -579,35 +574,34 @@ Nur diese 5 Zeilen. Kein weiterer Text."""
                     </div>
                 </div>
             </div>
-
-            <div style="margin-bottom:14px;">
-                {hashtags_html}
-            </div>
-
+            <div style="margin-bottom:14px;">{hashtags_html}</div>
             <div style="background:rgba(255,77,77,0.04);border:0.5px solid rgba(255,77,77,0.15);
                         border-radius:8px;padding:10px 14px;">
                 <span style="font-size:11px;font-weight:700;color:rgba(255,77,77,0.7);
                              letter-spacing:0.06em;text-transform:uppercase;margin-right:8px;">⚡ Heute</span>
                 <span style="font-size:12px;color:rgba(232,230,224,0.6);">{parsed.get('AKTION','—')}</span>
             </div>
-
         </div>
         """, unsafe_allow_html=True)
-
-        col_refresh, _ = st.columns([1, 5])
-        with col_refresh:
-            if st.button("🔄 Neue Anweisung", key="refresh_briefing"):
-                del st.session_state[briefing_key]
-                st.rerun()
     else:
+        # Fallback: delete bad cache and show button to retry
+        if briefing_key in st.session_state:
+            del st.session_state[briefing_key]
         st.markdown("""
         <div style="background:rgba(255,255,255,0.02);border:0.5px solid rgba(255,255,255,0.07);
                     border-radius:10px;padding:20px;text-align:center;">
-            <div style="font-size:13px;color:rgba(232,230,224,0.3);">
-                Anweisung wird nach der nächsten Analyse verfügbar.
+            <div style="font-size:13px;color:rgba(232,230,224,0.3);margin-bottom:12px;">
+                Anweisung konnte nicht geladen werden.
             </div>
         </div>
         """, unsafe_allow_html=True)
+
+    col_refresh, _ = st.columns([1, 5])
+    with col_refresh:
+        if st.button("🔄 Neue Anweisung", key="refresh_briefing"):
+            if briefing_key in st.session_state:
+                del st.session_state[briefing_key]
+            st.rerun()
 
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
 
