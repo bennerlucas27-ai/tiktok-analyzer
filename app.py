@@ -465,7 +465,7 @@ def show_dashboard(user_id, user_email, premium, analyses):
 
     # ── TÄGLICHE KI ANWEISUNG ──
     today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    briefing_key = f"daily_briefing_{latest.get('id','')}_{today_str}"
+    briefing_key = f"daily_briefing_v2_{latest.get('id','')}_{today_str}"
     cached_briefing = st.session_state.get(briefing_key)
     # Invalidate old format (HTML or multi-line cards)
     if cached_briefing and "::" not in cached_briefing:
