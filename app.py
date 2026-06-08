@@ -488,101 +488,109 @@ def show_dashboard(user_id, user_email, premium, analyses):
     # Auto-generate if not cached
     if not cached_briefing:
         try:
-            briefing_prompt = f"""Du bist ein persönlicher TikTok Coach. Erstelle eine konkrete Tagesanweisung für heute ({today_str}) für @{latest.get('username','—')}.
+            briefing_prompt = f"""Du bist ein persönlicher TikTok Coach. Erstelle eine ultrakurze Tagesanweisung für @{latest.get('username','—')}.
 
 ACCOUNT DATEN:
 - Nische: {latest.get('nische','—')}
 - Ø Views: {fmt(latest.get('avg_views'))}
-- Engagement: {latest.get('engagement_rate','—')}%
-- Beste Posting-Zeiten: {best_hours_str}
-- Top Videos (Beschreibung + Views): {json.dumps(top_videos, ensure_ascii=False)}
-- Schlechteste Videos: {json.dumps(flop_videos, ensure_ascii=False)}
+- Beste Posting-Zeit: {best_hours_str}
+- Top Videos: {json.dumps(top_videos[:3], ensure_ascii=False)}
+- Flop Videos: {json.dumps(flop_videos[:3], ensure_ascii=False)}
 
-Erstelle eine Tagesanweisung mit EXAKT diesem Format (kein Intro, direkt loslegen):
+Antworte NUR in exakt diesem Format, keine Abweichungen, kein Intro:
 
-🎣 HOOK DES TAGES
-[Einen konkreten Hook-Satz den die Person heute nutzen soll — fertig formuliert, nicht erklären]
-Warum: [1 Satz warum dieser Hook bei diesem Account funktioniert]
+HOOK::[fertiger Hook-Satz, max 12 Wörter]
+ZEIT::[Uhrzeit, z.B. 17:00 Uhr]
+FORMAT::[z.B. 18–25 Sek · schnelle Cuts · authentisch]
+HASHTAGS::[8 Hashtags mit #, durch Leerzeichen getrennt]
+AKTION::[Eine konkrete Sache heute anders machen, max 1 Satz]
 
-🎬 FORMAT
-Länge: [X Sekunden] · Stil: [beschreibend] · Ton: [beschreibend]
-
-⏰ JETZT POSTEN
-[Uhrzeit und kurze Begründung basierend auf den Daten]
-
-💡 THEMEN-IDEE
-[Eine konkrete Content-Idee für heute — spezifisch zur Nische]
-
-#️⃣ HASHTAGS
-[8-10 konkrete Hashtags — Mix aus groß und nischen-spezifisch]
-
-⚡ EINE SACHE DIE HEUTE ANDERS MACHEN
-[Ein konkreter Unterschied zu den Flop-Videos]
-
-Auf Deutsch. Direkt. Kein Fließtext."""
+Nur diese 5 Zeilen. Kein weiterer Text."""
 
             msg = client.messages.create(
                 model="claude-sonnet-4-6",
-                max_tokens=800,
+                max_tokens=300,
                 messages=[{"role": "user", "content": briefing_prompt}]
             )
-            cached_briefing = msg.content[0].text
+            cached_briefing = msg.content[0].text.strip()
             st.session_state[briefing_key] = cached_briefing
         except:
             cached_briefing = None
 
-    # Render briefing card
+    # Parse compact format
+    def parse_briefing(text):
+        result = {}
+        for line in (text or "").split("\n"):
+            if "::" in line:
+                key, val = line.split("::", 1)
+                result[key.strip()] = val.strip()
+        return result
+
+    parsed = parse_briefing(cached_briefing)
+
+    today_display = datetime.now(timezone.utc).strftime("%a, %d. %b")
+
     st.markdown('<div class="section-label">Heutige Anweisung</div>', unsafe_allow_html=True)
 
-    if cached_briefing:
-        # Parse sections for styled rendering
-        sections = []
-        current_title = ""
-        current_body = []
-        for line in cached_briefing.split("\n"):
-            line = line.strip()
-            if not line:
-                continue
-            is_header = any(line.startswith(e) for e in ["🎣","🎬","⏰","💡","#️⃣","⚡"])
-            if is_header:
-                if current_title:
-                    sections.append((current_title, "\n".join(current_body).strip()))
-                current_title = line
-                current_body = []
-            else:
-                current_body.append(line)
-        if current_title:
-            sections.append((current_title, "\n".join(current_body).strip()))
+    if parsed.get("HOOK"):
+        hashtags = parsed.get("HASHTAGS", "")
+        # Make hashtags smaller/muted
+        hashtags_html = " ".join([
+            f'<span style="color:rgba(232,230,224,0.35);font-size:11px;">{h}</span>'
+            for h in hashtags.split() if h.startswith("#")
+        ])
 
-        # Render as horizontal cards
-        n = len(sections)
-        if n > 0:
-            cols = st.columns(min(n, 3))
-            for i, (title, body) in enumerate(sections):
-                with cols[i % 3]:
-                    body_html = body.replace("\n", "<br>")
-                    st.markdown(f"""
-                    <div style="background:rgba(255,255,255,0.02);border:0.5px solid rgba(255,255,255,0.07);
-                                border-radius:10px;padding:16px 18px;margin-bottom:10px;height:100%;">
-                        <div style="font-size:13px;font-weight:700;color:#e8e6e0;margin-bottom:8px;">{title}</div>
-                        <div style="font-size:12px;color:rgba(232,230,224,0.55);line-height:1.7;">{body_html}</div>
+        st.markdown(f"""
+        <div style="background:rgba(255,255,255,0.02);border:0.5px solid rgba(255,255,255,0.07);
+                    border-radius:12px;padding:22px 26px;margin-bottom:6px;">
+
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+                <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
+                            color:rgba(232,230,224,0.25);">{today_display}</div>
+                <div style="font-size:11px;color:rgba(232,230,224,0.2);font-family:'DM Mono',monospace;">
+                    @{latest.get('username','—')} · {latest.get('nische','—')[:30]}
+                </div>
+            </div>
+
+            <div style="font-size:20px;font-weight:700;color:#e8e6e0;line-height:1.3;margin-bottom:20px;">
+                🎣 &nbsp;{parsed.get('HOOK','—')}
+            </div>
+
+            <div style="display:flex;align-items:center;gap:24px;padding:14px 0;
+                        border-top:0.5px solid rgba(255,255,255,0.05);
+                        border-bottom:0.5px solid rgba(255,255,255,0.05);margin-bottom:16px;">
+                <div>
+                    <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
+                                color:rgba(232,230,224,0.25);margin-bottom:4px;">Jetzt posten</div>
+                    <div style="font-family:'DM Mono',monospace;font-size:15px;color:#e8e6e0;">
+                        ⏰ &nbsp;{parsed.get('ZEIT','—')}
                     </div>
-                    """, unsafe_allow_html=True)
-            # Second row if more than 3 sections
-            if n > 3:
-                cols2 = st.columns(min(n - 3, 3))
-                for i, (title, body) in enumerate(sections[3:]):
-                    with cols2[i % 3]:
-                        body_html = body.replace("\n", "<br>")
-                        st.markdown(f"""
-                        <div style="background:rgba(255,255,255,0.02);border:0.5px solid rgba(255,255,255,0.07);
-                                    border-radius:10px;padding:16px 18px;margin-bottom:10px;height:100%;">
-                            <div style="font-size:13px;font-weight:700;color:#e8e6e0;margin-bottom:8px;">{title}</div>
-                            <div style="font-size:12px;color:rgba(232,230,224,0.55);line-height:1.7;">{body_html}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
+                </div>
+                <div style="width:0.5px;height:32px;background:rgba(255,255,255,0.07);"></div>
+                <div>
+                    <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
+                                color:rgba(232,230,224,0.25);margin-bottom:4px;">Format</div>
+                    <div style="font-size:13px;color:rgba(232,230,224,0.6);">
+                        🎬 &nbsp;{parsed.get('FORMAT','—')}
+                    </div>
+                </div>
+            </div>
 
-        col_refresh, _ = st.columns([1, 4])
+            <div style="margin-bottom:14px;">
+                {hashtags_html}
+            </div>
+
+            <div style="background:rgba(255,77,77,0.04);border:0.5px solid rgba(255,77,77,0.15);
+                        border-radius:8px;padding:10px 14px;">
+                <span style="font-size:11px;font-weight:700;color:rgba(255,77,77,0.7);
+                             letter-spacing:0.06em;text-transform:uppercase;margin-right:8px;">⚡ Heute</span>
+                <span style="font-size:12px;color:rgba(232,230,224,0.6);">{parsed.get('AKTION','—')}</span>
+            </div>
+
+        </div>
+        """, unsafe_allow_html=True)
+
+        col_refresh, _ = st.columns([1, 5])
         with col_refresh:
             if st.button("🔄 Neue Anweisung", key="refresh_briefing"):
                 del st.session_state[briefing_key]
@@ -592,7 +600,7 @@ Auf Deutsch. Direkt. Kein Fließtext."""
         <div style="background:rgba(255,255,255,0.02);border:0.5px solid rgba(255,255,255,0.07);
                     border-radius:10px;padding:20px;text-align:center;">
             <div style="font-size:13px;color:rgba(232,230,224,0.3);">
-                Anweisung wird nach der nächsten Analyse verfügbar — Video-Daten werden benötigt.
+                Anweisung wird nach der nächsten Analyse verfügbar.
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -621,264 +629,6 @@ Auf Deutsch. Direkt. Kein Fließtext."""
     with c4:
         st.markdown('<div class="metric-accent-blue"></div>', unsafe_allow_html=True)
         st.metric("Ø VIEWS / VIDEO", fmt(latest.get("avg_views")))
-
-    st.markdown("<div style='height:22px'></div>", unsafe_allow_html=True)
-
-    # ── ROW 2: PERFORMANCE CHARTS + VERGLEICH SCREEN 1 ──
-    st.markdown('<div class="section-label">Performance-Verlauf & Account-Vergleich</div>', unsafe_allow_html=True)
-
-    col_charts, col_compare = st.columns([1.3, 1])
-
-    PLOTLY_LAYOUT = dict(
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="DM Mono", color="rgba(232,230,224,0.35)", size=10),
-        margin=dict(l=0, r=4, t=6, b=0),
-        showlegend=False,
-        hovermode="x unified",
-    )
-    AXIS_X = dict(showgrid=False, zeroline=False, tickformat="%d.%m", tickfont=dict(size=10), linecolor="rgba(255,255,255,0.05)")
-    AXIS_Y = dict(showgrid=True, gridcolor="rgba(255,255,255,0.04)", zeroline=False, tickfont=dict(size=10))
-
-    with col_charts:
-        st.markdown('<div class="db-panel">', unsafe_allow_html=True)
-
-        if len(analyses) > 1:
-            df = pd.DataFrame([{
-                "Datum": a["created_at"][:10],
-                "Ø Views": a.get("avg_views", 0) or 0,
-                "Engagement %": float(a.get("engagement_rate", 0) or 0)
-            } for a in reversed(analyses)])
-            df["Datum"] = pd.to_datetime(df["Datum"])
-
-            # Views chart
-            fig_v = go.Figure()
-            fig_v.add_trace(go.Scatter(
-                x=df["Datum"], y=df["Ø Views"],
-                mode="lines+markers",
-                line=dict(color="#ff4d4d", width=2),
-                marker=dict(size=5, color="#ff4d4d", line=dict(color="#0a0a0b", width=2)),
-                fill="tozeroy", fillcolor="rgba(255,77,77,0.06)",
-                hovertemplate="%{y:,.0f} Views<extra></extra>",
-            ))
-            fig_v.update_layout(**PLOTLY_LAYOUT, height=170,
-                xaxis={**AXIS_X},
-                yaxis={**AXIS_Y, "tickformat": ",d"},
-            )
-            st.markdown('<div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(232,230,224,0.25);margin-bottom:8px;">Ø Views über Zeit</div>', unsafe_allow_html=True)
-            st.plotly_chart(fig_v, use_container_width=True, config={"displayModeBar": False})
-
-            st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
-
-            # Engagement chart
-            fig_e = go.Figure()
-            fig_e.add_trace(go.Scatter(
-                x=df["Datum"], y=df["Engagement %"],
-                mode="lines+markers",
-                line=dict(color="#1d9e75", width=2),
-                marker=dict(size=5, color="#1d9e75", line=dict(color="#0a0a0b", width=2)),
-                fill="tozeroy", fillcolor="rgba(29,158,117,0.06)",
-                hovertemplate="%{y:.2f}%<extra></extra>",
-            ))
-            fig_e.update_layout(**PLOTLY_LAYOUT, height=130,
-                xaxis={**AXIS_X},
-                yaxis={**AXIS_Y, "ticksuffix": "%"},
-            )
-            st.markdown('<div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(232,230,224,0.25);margin-bottom:8px;margin-top:4px;">Engagement Rate</div>', unsafe_allow_html=True)
-            st.plotly_chart(fig_e, use_container_width=True, config={"displayModeBar": False})
-        else:
-            st.markdown('<div style="color:rgba(232,230,224,0.2);font-size:13px;text-align:center;padding:40px 0;">Mindestens 2 Analysen für Verlauf nötig</div>', unsafe_allow_html=True)
-
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    with col_compare:
-        st.markdown('<div class="db-panel" style="height:100%">', unsafe_allow_html=True)
-        st.markdown('<div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(232,230,224,0.25);margin-bottom:12px;">Account-Vergleich — Ø Views</div>', unsafe_allow_html=True)
-
-        if latest and latest.get("top_accounts"):
-            my_views = int(latest.get("avg_views", 0) or 0)
-            raw_accounts = latest.get("top_accounts", []) or []
-            comp_accounts = [str(a) if not isinstance(a, str) else a for a in raw_accounts]
-            username = latest.get("username", "du")
-
-            st.markdown(f"""
-            <div style="margin-bottom:14px;">
-                <span class="acc-tag acc-tag-you">@{username}</span>
-                <span class="acc-tag acc-tag-top">Top-Performer</span>
-                <span class="acc-tag acc-tag-similar">Verglichen</span>
-            </div>
-            """, unsafe_allow_html=True)
-
-            all_bars = [{"label": f"@{username}", "views": my_views, "color": "#ff4d4d"}]
-            for acc in comp_accounts[:4]:
-                all_bars.append({"label": f"@{acc}", "views": None, "color": "rgba(255,255,255,0.12)"})
-
-            max_views = max([b["views"] for b in all_bars if b["views"]], default=1)
-            bars_html = ""
-            for b in all_bars:
-                pct = round((b["views"] / max_views) * 100) if b["views"] else 12
-                val_str = fmt(b["views"]) if b["views"] else "n/a"
-                bars_html += f"""
-                <div class="compare-row">
-                    <div class="compare-label">
-                        <span>{b['label']}</span>
-                        <span style="color:{'#e8e6e0' if b['views'] else 'rgba(232,230,224,0.2)'};">{val_str}</span>
-                    </div>
-                    <div class="compare-track">
-                        <div style="width:{pct}%;height:100%;background:{b['color']};border-radius:3px;"></div>
-                    </div>
-                </div>"""
-            st.markdown(bars_html, unsafe_allow_html=True)
-
-            st.markdown(f"""
-            <div style="margin-top:18px;padding-top:14px;border-top:0.5px solid rgba(255,255,255,0.05);">
-                <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
-                            color:rgba(232,230,224,0.2);margin-bottom:5px;">Erkannte Nische</div>
-                <div style="font-size:13px;color:rgba(232,230,224,0.65);">{latest.get('nische','—')}</div>
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            st.markdown('<div style="color:rgba(232,230,224,0.2);font-size:13px;text-align:center;padding:24px 0;">Keine Vergleichsdaten</div>', unsafe_allow_html=True)
-
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    st.markdown("<div style='height:22px'></div>", unsafe_allow_html=True)
-
-    # ── ROW 3: WATCHTIME + VERGLEICH SCREEN 2 ──
-    st.markdown('<div class="section-label">Watchtime-Analyse & Analysen-Vergleich</div>', unsafe_allow_html=True)
-
-    col_wt, col_hist = st.columns([1, 1.3])
-
-    with col_wt:
-        st.markdown('<div class="db-panel">', unsafe_allow_html=True)
-        st.markdown('<div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(232,230,224,0.25);margin-bottom:14px;">Watchtime-Analyse</div>', unsafe_allow_html=True)
-
-        wt = st.session_state.get("last_watchtime", {})
-        avg_wt = wt.get("avg_watchtime")
-        avg_dur = wt.get("avg_duration")
-        completion = round((avg_wt / avg_dur * 100), 1) if avg_wt and avg_dur and avg_dur > 0 else None
-        best_wt = wt.get("best_watchtime")
-        dropoff = wt.get("dropoff_sec")
-
-        def wt_card(label, value, sub):
-            return f'<div class="wt-card"><div class="wt-label">{label}</div><div class="wt-value">{value}</div><div class="wt-sub">{sub}</div></div>'
-
-        st.markdown(f"""<div class="wt-grid">
-            {wt_card("Ø Watchtime", f"{avg_wt:.1f}s" if avg_wt else "—", f"von Ø {avg_dur:.0f}s Länge" if avg_dur else "Nächste Analyse")}
-            {wt_card("Completion Rate", f"{completion}%" if completion else "—", "Nischen-Schnitt: ~40%")}
-            {wt_card("Bestes Video", f"{best_wt:.1f}s" if best_wt else "—", "Höchste Watchtime")}
-            {wt_card("Drop-Off", f"Sek. {int(dropoff)}" if dropoff else "—", "Optimiere deinen Hook")}
-        </div>""", unsafe_allow_html=True)
-
-        if wt.get("by_duration"):
-            bd = wt["by_duration"]
-            fig_wt = go.Figure(go.Bar(
-                x=list(bd.keys()),
-                y=list(bd.values()),
-                marker_color=["rgba(255,77,77,0.8)", "rgba(255,77,77,0.55)",
-                              "rgba(255,77,77,0.35)", "rgba(255,77,77,0.2)", "rgba(255,77,77,0.1)"],
-                text=[f"{v}%" for v in bd.values()],
-                textposition="outside",
-                textfont=dict(color="rgba(232,230,224,0.35)", size=10),
-            ))
-            fig_wt.update_layout(**PLOTLY_LAYOUT, height=130,
-                xaxis=dict(showgrid=False, zeroline=False, tickfont=dict(size=10)),
-                yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.04)", zeroline=False,
-                           ticksuffix="%", tickfont=dict(size=9), showticklabels=False,
-                           range=[0, max(bd.values()) * 1.35]),
-            )
-            st.markdown('<div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(232,230,224,0.25);margin:14px 0 8px;">Completion Rate nach Videolänge</div>', unsafe_allow_html=True)
-            st.plotly_chart(fig_wt, use_container_width=True, config={"displayModeBar": False})
-        else:
-            st.markdown("""
-            <div style="margin-top:12px;padding:16px;background:rgba(255,255,255,0.02);
-                        border:0.5px solid rgba(255,255,255,0.05);border-radius:8px;text-align:center;">
-                <div style="font-size:11px;color:rgba(232,230,224,0.2);">
-                    Watchtime-Daten werden bei der nächsten<br>Analyse automatisch geladen
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    with col_hist:
-        st.markdown('<div class="db-panel">', unsafe_allow_html=True)
-        st.markdown('<div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(232,230,224,0.25);margin-bottom:14px;">Zwei Analysen vergleichen</div>', unsafe_allow_html=True)
-
-        if len(analyses) >= 2:
-            opts_labels = [f"📅 {a['created_at'][:10]}  ·  @{a['username']}  ·  {fmt(a['avg_views'])} Ø Views" for a in analyses]
-
-            col_sa, col_sb = st.columns(2)
-            with col_sa:
-                idx_a = st.selectbox("Analyse A", range(len(opts_labels)), format_func=lambda i: opts_labels[i], index=0, key="cmp_a")
-            with col_sb:
-                idx_b = st.selectbox("Analyse B", range(len(opts_labels)), format_func=lambda i: opts_labels[i], index=min(1, len(analyses)-1), key="cmp_b")
-
-            a_data = analyses[idx_a]
-            b_data = analyses[idx_b]
-
-            def diff_badge(va, vb):
-                if va is None or vb is None or float(vb) == 0:
-                    return ""
-                pct = round(((float(va) - float(vb)) / float(vb)) * 100, 1)
-                color = "#1d9e75" if pct >= 0 else "#ff4d4d"
-                sign = "+" if pct >= 0 else ""
-                return f'<span style="color:{color};font-family:DM Mono,monospace;font-size:11px;">{sign}{pct}%</span>'
-
-            rows = [
-                ("Ø Views", fmt(a_data.get("avg_views")), fmt(b_data.get("avg_views")), diff_badge(a_data.get("avg_views"), b_data.get("avg_views"))),
-                ("Engagement", f"{a_data.get('engagement_rate','—')}%", f"{b_data.get('engagement_rate','—')}%", diff_badge(a_data.get("engagement_rate"), b_data.get("engagement_rate"))),
-                ("Account", f"@{a_data.get('username','—')}", f"@{b_data.get('username','—')}", ""),
-                ("Nische", (a_data.get("nische","—") or "—")[:18], (b_data.get("nische","—") or "—")[:18], ""),
-                ("Datum", a_data["created_at"][:10], b_data["created_at"][:10], ""),
-            ]
-
-            tbl = """<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:10px;">
-              <thead><tr>
-                <th style="text-align:left;padding:7px 4px;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:rgba(232,230,224,0.2);border-bottom:0.5px solid rgba(255,255,255,0.06);">Metrik</th>
-                <th style="text-align:right;padding:7px 4px;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:rgba(255,77,77,0.55);border-bottom:0.5px solid rgba(255,255,255,0.06);">A</th>
-                <th style="text-align:right;padding:7px 4px;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:rgba(55,138,221,0.55);border-bottom:0.5px solid rgba(255,255,255,0.06);">B</th>
-                <th style="text-align:right;padding:7px 4px;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:rgba(232,230,224,0.2);border-bottom:0.5px solid rgba(255,255,255,0.06);">Δ</th>
-              </tr></thead><tbody>"""
-            for label, va, vb, dlt in rows:
-                tbl += f"""<tr>
-                  <td style="padding:8px 4px;color:rgba(232,230,224,0.35);border-bottom:0.5px solid rgba(255,255,255,0.04);">{label}</td>
-                  <td style="text-align:right;padding:8px 4px;font-family:'DM Mono',monospace;color:#e8e6e0;border-bottom:0.5px solid rgba(255,255,255,0.04);">{va}</td>
-                  <td style="text-align:right;padding:8px 4px;font-family:'DM Mono',monospace;color:rgba(232,230,224,0.45);border-bottom:0.5px solid rgba(255,255,255,0.04);">{vb}</td>
-                  <td style="text-align:right;padding:8px 4px;border-bottom:0.5px solid rgba(255,255,255,0.04);">{dlt}</td>
-                </tr>"""
-            tbl += "</tbody></table>"
-            st.markdown(tbl, unsafe_allow_html=True)
-
-            # Grouped bar chart comparison
-            fig_cmp = go.Figure()
-            fig_cmp.add_trace(go.Bar(
-                name="A", x=["Ø Views", "Engagement ×1000"],
-                y=[float(a_data.get("avg_views", 0) or 0), float(a_data.get("engagement_rate", 0) or 0) * 1000],
-                marker_color="rgba(255,77,77,0.7)",
-                hovertemplate="%{x}: %{y:,.0f}<extra>A</extra>",
-            ))
-            fig_cmp.add_trace(go.Bar(
-                name="B", x=["Ø Views", "Engagement ×1000"],
-                y=[float(b_data.get("avg_views", 0) or 0), float(b_data.get("engagement_rate", 0) or 0) * 1000],
-                marker_color="rgba(55,138,221,0.55)",
-                hovertemplate="%{x}: %{y:,.0f}<extra>B</extra>",
-            ))
-            fig_cmp.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(family="DM Mono", color="rgba(232,230,224,0.35)", size=10),
-                height=120, barmode="group", showlegend=False,
-                xaxis=dict(showgrid=False, zeroline=False, tickfont=dict(size=10)),
-                yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.04)", zeroline=False,
-                           tickformat=",d", tickfont=dict(size=9), showticklabels=False),
-                margin=dict(l=0, r=0, t=10, b=0),
-            )
-            st.markdown("<div style='margin-top:14px;'></div>", unsafe_allow_html=True)
-            st.plotly_chart(fig_cmp, use_container_width=True, config={"displayModeBar": False})
-        else:
-            st.markdown('<div style="color:rgba(232,230,224,0.2);font-size:13px;text-align:center;padding:30px 0;">Mindestens 2 Analysen nötig</div>', unsafe_allow_html=True)
-
-        st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown("<div style='height:22px'></div>", unsafe_allow_html=True)
 
@@ -1209,6 +959,226 @@ def quick_refresh(user_id, username):
     return True, avg_views, engagement
 
 
+# ─── ANALYTICS PAGE ───────────────────────────────────────────────────────────
+
+def show_analytics(user_id, analyses):
+    import plotly.graph_objects as go
+
+    latest = analyses[0] if analyses else None
+
+    PLOTLY_LAYOUT = dict(
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="DM Mono", color="rgba(232,230,224,0.35)", size=10),
+        margin=dict(l=0, r=4, t=6, b=0),
+        showlegend=False, hovermode="x unified",
+    )
+    AXIS_X = dict(showgrid=False, zeroline=False, tickformat="%d.%m", tickfont=dict(size=10))
+    AXIS_Y = dict(showgrid=True, gridcolor="rgba(255,255,255,0.04)", zeroline=False, tickfont=dict(size=10))
+
+    st.markdown("""
+    <div style="padding:20px 2px 14px;border-bottom:0.5px solid rgba(255,255,255,0.05);margin-bottom:22px;">
+        <div style="font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;
+                    color:rgba(232,230,224,0.25);">Analytics</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    if not latest:
+        st.info("Erst eine Analyse starten.")
+        return
+
+    # ── PERFORMANCE CHARTS ──
+    st.markdown('<div class="section-label">Performance-Verlauf</div>', unsafe_allow_html=True)
+
+    if len(analyses) > 1:
+        df = pd.DataFrame([{
+            "Datum": a["created_at"][:10],
+            "Ø Views": a.get("avg_views", 0) or 0,
+            "Engagement %": float(a.get("engagement_rate", 0) or 0)
+        } for a in reversed(analyses)])
+        df["Datum"] = pd.to_datetime(df["Datum"])
+
+        col_v, col_e = st.columns(2)
+        with col_v:
+            st.markdown('<div class="db-panel">', unsafe_allow_html=True)
+            fig_v = go.Figure()
+            fig_v.add_trace(go.Scatter(
+                x=df["Datum"], y=df["Ø Views"],
+                mode="lines+markers",
+                line=dict(color="#ff4d4d", width=2),
+                marker=dict(size=5, color="#ff4d4d", line=dict(color="#0a0a0b", width=2)),
+                fill="tozeroy", fillcolor="rgba(255,77,77,0.06)",
+                hovertemplate="%{y:,.0f} Views<extra></extra>",
+            ))
+            fig_v.update_layout(**PLOTLY_LAYOUT, height=180, xaxis={**AXIS_X}, yaxis={**AXIS_Y, "tickformat": ",d"})
+            st.markdown('<div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(232,230,224,0.25);margin-bottom:8px;">Ø Views über Zeit</div>', unsafe_allow_html=True)
+            st.plotly_chart(fig_v, use_container_width=True, config={"displayModeBar": False})
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        with col_e:
+            st.markdown('<div class="db-panel">', unsafe_allow_html=True)
+            fig_e = go.Figure()
+            fig_e.add_trace(go.Scatter(
+                x=df["Datum"], y=df["Engagement %"],
+                mode="lines+markers",
+                line=dict(color="#1d9e75", width=2),
+                marker=dict(size=5, color="#1d9e75", line=dict(color="#0a0a0b", width=2)),
+                fill="tozeroy", fillcolor="rgba(29,158,117,0.06)",
+                hovertemplate="%{y:.2f}%<extra></extra>",
+            ))
+            fig_e.update_layout(**PLOTLY_LAYOUT, height=180, xaxis={**AXIS_X}, yaxis={**AXIS_Y, "ticksuffix": "%"})
+            st.markdown('<div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(232,230,224,0.25);margin-bottom:8px;">Engagement Rate</div>', unsafe_allow_html=True)
+            st.plotly_chart(fig_e, use_container_width=True, config={"displayModeBar": False})
+            st.markdown('</div>', unsafe_allow_html=True)
+    else:
+        st.info("Mindestens 2 Analysen für Verlauf nötig.")
+
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
+    # ── ACCOUNT VERGLEICH ──
+    st.markdown('<div class="section-label">Account-Vergleich</div>', unsafe_allow_html=True)
+
+    col_cmp, col_hist = st.columns([1, 1.3])
+
+    with col_cmp:
+        st.markdown('<div class="db-panel">', unsafe_allow_html=True)
+        st.markdown('<div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(232,230,224,0.25);margin-bottom:12px;">Verglichene Accounts</div>', unsafe_allow_html=True)
+        if latest and latest.get("top_accounts"):
+            my_views = int(latest.get("avg_views", 0) or 0)
+            raw_accounts = latest.get("top_accounts", []) or []
+            comp_accounts = [str(a) if not isinstance(a, str) else a for a in raw_accounts]
+            username = latest.get("username", "du")
+            all_bars = [{"label": f"@{username}", "views": my_views, "color": "#ff4d4d"}]
+            for acc in comp_accounts[:4]:
+                all_bars.append({"label": f"@{acc}", "views": None, "color": "rgba(255,255,255,0.12)"})
+            max_views = max([b["views"] for b in all_bars if b["views"]], default=1)
+            bars_html = ""
+            for b in all_bars:
+                pct = round((b["views"] / max_views) * 100) if b["views"] else 12
+                val_str = fmt(b["views"]) if b["views"] else "n/a"
+                bars_html += f"""<div class="compare-row">
+                    <div class="compare-label"><span>{b['label']}</span>
+                    <span style="color:{'#e8e6e0' if b['views'] else 'rgba(232,230,224,0.2)'};">{val_str}</span></div>
+                    <div class="compare-track"><div style="width:{pct}%;height:100%;background:{b['color']};border-radius:3px;"></div></div>
+                </div>"""
+            st.markdown(bars_html, unsafe_allow_html=True)
+            st.markdown(f'<div style="margin-top:14px;font-size:11px;color:rgba(232,230,224,0.3);">Nische: {latest.get("nische","—")}</div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div style="color:rgba(232,230,224,0.2);font-size:13px;text-align:center;padding:20px 0;">Keine Daten</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with col_hist:
+        st.markdown('<div class="db-panel">', unsafe_allow_html=True)
+        st.markdown('<div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(232,230,224,0.25);margin-bottom:12px;">Zwei Analysen vergleichen</div>', unsafe_allow_html=True)
+        if len(analyses) >= 2:
+            opts_labels = [f"📅 {a['created_at'][:10]}  ·  @{a['username']}  ·  {fmt(a['avg_views'])} Ø Views" for a in analyses]
+            col_sa, col_sb = st.columns(2)
+            with col_sa:
+                idx_a = st.selectbox("A", range(len(opts_labels)), format_func=lambda i: opts_labels[i], index=0, key="an_cmp_a", label_visibility="collapsed")
+            with col_sb:
+                idx_b = st.selectbox("B", range(len(opts_labels)), format_func=lambda i: opts_labels[i], index=min(1, len(analyses)-1), key="an_cmp_b", label_visibility="collapsed")
+            a_data = analyses[idx_a]
+            b_data = analyses[idx_b]
+            def diff_badge(va, vb):
+                if va is None or vb is None or float(vb or 0) == 0: return ""
+                pct = round(((float(va) - float(vb)) / float(vb)) * 100, 1)
+                color = "#1d9e75" if pct >= 0 else "#ff4d4d"
+                return f'<span style="color:{color};font-family:DM Mono,monospace;font-size:11px;">{"+" if pct>=0 else ""}{pct}%</span>'
+            rows = [
+                ("Ø Views", fmt(a_data.get("avg_views")), fmt(b_data.get("avg_views")), diff_badge(a_data.get("avg_views"), b_data.get("avg_views"))),
+                ("Engagement", f"{a_data.get('engagement_rate','—')}%", f"{b_data.get('engagement_rate','—')}%", diff_badge(a_data.get("engagement_rate"), b_data.get("engagement_rate"))),
+                ("Account", f"@{a_data.get('username','—')}", f"@{b_data.get('username','—')}", ""),
+                ("Datum", a_data["created_at"][:10], b_data["created_at"][:10], ""),
+            ]
+            tbl = '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:8px;"><thead><tr>'
+            for h, c in [("Metrik","rgba(232,230,224,0.2)"),("A","rgba(255,77,77,0.55)"),("B","rgba(55,138,221,0.55)"),("Δ","rgba(232,230,224,0.2)")]:
+                align = "left" if h == "Metrik" else "right"
+                tbl += f'<th style="text-align:{align};padding:7px 4px;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:{c};border-bottom:0.5px solid rgba(255,255,255,0.06);">{h}</th>'
+            tbl += "</tr></thead><tbody>"
+            for label, va, vb, dlt in rows:
+                tbl += f'<tr><td style="padding:8px 4px;color:rgba(232,230,224,0.35);border-bottom:0.5px solid rgba(255,255,255,0.04);">{label}</td><td style="text-align:right;padding:8px 4px;font-family:DM Mono,monospace;color:#e8e6e0;border-bottom:0.5px solid rgba(255,255,255,0.04);">{va}</td><td style="text-align:right;padding:8px 4px;font-family:DM Mono,monospace;color:rgba(232,230,224,0.45);border-bottom:0.5px solid rgba(255,255,255,0.04);">{vb}</td><td style="text-align:right;padding:8px 4px;border-bottom:0.5px solid rgba(255,255,255,0.04);">{dlt}</td></tr>'
+            tbl += "</tbody></table>"
+            st.markdown(tbl, unsafe_allow_html=True)
+        else:
+            st.markdown('<div style="color:rgba(232,230,224,0.2);font-size:13px;text-align:center;padding:20px 0;">Mindestens 2 Analysen nötig</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
+    # ── WATCHTIME ──
+    st.markdown('<div class="section-label">Watchtime-Analyse</div>', unsafe_allow_html=True)
+    wt = st.session_state.get("last_watchtime", {})
+    avg_wt = wt.get("avg_watchtime")
+    avg_dur = wt.get("avg_duration")
+    completion = round((avg_wt / avg_dur * 100), 1) if avg_wt and avg_dur and avg_dur > 0 else None
+    best_wt = wt.get("best_watchtime")
+    dropoff = wt.get("dropoff_sec")
+
+    def wt_card(label, value, sub):
+        return f'<div class="wt-card"><div class="wt-label">{label}</div><div class="wt-value">{value}</div><div class="wt-sub">{sub}</div></div>'
+
+    st.markdown(f"""<div class="wt-grid">
+        {wt_card("Ø Watchtime", f"{avg_wt:.1f}s" if avg_wt else "—", f"von Ø {avg_dur:.0f}s Länge" if avg_dur else "Nächste Analyse")}
+        {wt_card("Completion Rate", f"{completion}%" if completion else "—", "Nischen-Schnitt: ~40%")}
+        {wt_card("Bestes Video", f"{best_wt:.1f}s" if best_wt else "—", "Höchste Watchtime")}
+        {wt_card("Drop-Off", f"Sek. {int(dropoff)}" if dropoff else "—", "Optimiere deinen Hook")}
+    </div>""", unsafe_allow_html=True)
+
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
+    # ── TOP / FLOP + ALLE ANALYSEN ──
+    last_top = st.session_state.get("last_top_videos", [])
+    last_flop = st.session_state.get("last_flop_videos", [])
+
+    def video_list_html(videos, empty_msg):
+        if not videos:
+            return f'<div style="color:rgba(232,230,224,0.18);font-size:12px;text-align:center;padding:16px 0;">{empty_msg}</div>'
+        out = ""
+        for i, v in enumerate(videos[:5]):
+            title = (v.get("beschreibung") or "")[:52] or "(kein Titel)"
+            views = fmt(v.get("views", 0))
+            eng = round((v.get("likes", 0) / max(v.get("views", 1), 1) * 100), 1)
+            datum = days_ago(v.get("datum", ""))
+            out += f"""<div class="video-item">
+                <span class="video-rank">0{i+1}</span>
+                <div style="flex:1;min-width:0;">
+                    <div class="video-title">{title}</div>
+                    <div style="font-size:10px;color:rgba(232,230,224,0.2);font-family:'DM Mono',monospace;margin-top:2px;">{datum}</div>
+                </div>
+                <div style="text-align:right;flex-shrink:0;">
+                    <div class="video-views">{views}</div>
+                    <div class="video-eng">{eng}%</div>
+                </div>
+            </div>"""
+        return out
+
+    st.markdown('<div class="section-label">Top & Flop Videos</div>', unsafe_allow_html=True)
+    col_top, col_flop = st.columns(2)
+    with col_top:
+        st.markdown('<div class="db-panel">', unsafe_allow_html=True)
+        st.markdown('<div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(232,230,224,0.25);margin-bottom:12px;">🏆 Top Videos</div>', unsafe_allow_html=True)
+        st.markdown(video_list_html(last_top, "Nach nächster Analyse verfügbar"), unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+    with col_flop:
+        st.markdown('<div class="db-panel">', unsafe_allow_html=True)
+        st.markdown('<div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(232,230,224,0.25);margin-bottom:12px;">📉 Flop Videos</div>', unsafe_allow_html=True)
+        st.markdown(video_list_html(last_flop, "Nach nächster Analyse verfügbar"), unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
+    st.markdown('<div class="section-label">Alle gespeicherten Analysen</div>', unsafe_allow_html=True)
+    for a in analyses:
+        with st.expander(f"📅 {a['created_at'][:10]}  ·  @{a['username']}  ·  {fmt(a['avg_views'])} Ø Views  ·  {a.get('engagement_rate','—')}% Eng"):
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown(f'<div style="font-size:10px;color:rgba(232,230,224,0.3);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">Nische</div><div style="font-size:14px;color:#e8e6e0;">{a.get("nische","—")}</div>', unsafe_allow_html=True)
+            with c2:
+                accs = ", ".join(a["top_accounts"]) if a.get("top_accounts") else "—"
+                st.markdown(f'<div style="font-size:10px;color:rgba(232,230,224,0.3);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">Accounts</div><div style="font-size:12px;font-family:DM Mono,monospace;color:rgba(232,230,224,0.6);">{accs}</div>', unsafe_allow_html=True)
+            st.markdown(a.get("analysis_text", ""))
+            st.download_button("📥 Download", data=a.get("analysis_text",""), file_name=f"analyse_{a['username']}_{a['created_at'][:10]}.txt", key=f"dl_{a['id']}")
+
+
 # ─── MAIN APP ─────────────────────────────────────────────────────────────────
 
 def show_app():
@@ -1227,7 +1197,7 @@ def show_app():
         """, unsafe_allow_html=True)
 
         if premium:
-            page = st.radio("", ["🔍 Neue Analyse", "📊 Dashboard"], label_visibility="collapsed")
+            page = st.radio("", ["🔍 Neue Analyse", "📊 Dashboard", "📈 Analytics"], label_visibility="collapsed")
         else:
             page = "🔍 Neue Analyse"
 
@@ -1501,6 +1471,10 @@ def show_app():
     elif page == "📊 Dashboard" and premium:
         analyses = load_analyses(user_id)
         show_dashboard(user_id, user_email, premium, analyses)
+
+    elif page == "📈 Analytics" and premium:
+        analyses = load_analyses(user_id)
+        show_analytics(user_id, analyses)
 
 
 # ─── ROUTER ───────────────────────────────────────────────────────────────────
