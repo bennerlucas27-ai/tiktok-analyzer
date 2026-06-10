@@ -1295,7 +1295,7 @@ def show_app():
             tokens = get_tokens(user_id)
             st.markdown(f"""
             <div style="background:rgba(255,255,255,0.04);border:0.5px solid rgba(255,255,255,0.08);
-                        border-radius:8px;padding:12px 14px;margin-bottom:12px;text-align:center;">
+                        border-radius:8px;padding:12px 14px;margin-bottom:8px;text-align:center;">
                 <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
                             color:rgba(232,230,224,0.25);margin-bottom:6px;">Analysen übrig</div>
                 <div style="font-family:'DM Mono',monospace;font-size:28px;color:{'#1d9e75' if tokens > 0 else '#ff4d4d'};">
@@ -1303,6 +1303,16 @@ def show_app():
                 </div>
             </div>
             """, unsafe_allow_html=True)
+
+            # Token kaufen Buttons
+            for pkg in TOKEN_PACKAGES:
+                try:
+                    url = create_token_checkout(user_email, user_id, pkg["price_id"], pkg["tokens"])
+                    if url:
+                        st.markdown(f'<a href="{url}" target="_blank"><button style="width:100%;background:rgba(255,255,255,0.04);color:rgba(232,230,224,0.6);border:0.5px solid rgba(255,255,255,0.08);padding:8px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;margin-bottom:4px;font-family:Syne,sans-serif;">{pkg["label"]} — {pkg["preis"]}</button></a>', unsafe_allow_html=True)
+                except:
+                    pass
+            st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
         if st.button("Ausloggen", use_container_width=True):
