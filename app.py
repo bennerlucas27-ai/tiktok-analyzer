@@ -23,6 +23,17 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_PRICE_ID = os.getenv("STRIPE_PRICE_ID")
 
+# Token Pakete
+STRIPE_TOKEN_1 = "price_1TgtD76ng13JhR6oyCCBYNLD"   # 1 Analyse = 1€
+STRIPE_TOKEN_3 = "price_1TgtDW6ng13JhR6okqTZgMiw"   # 3 Analysen = 2€
+STRIPE_TOKEN_10 = "price_1TgtDp6ng13JhR6o2eMTXe5J"  # 10 Analysen = 5€
+
+TOKEN_PACKAGES = [
+    {"price_id": STRIPE_TOKEN_1, "tokens": 1, "preis": "1€", "label": "Starter — 1 Analyse"},
+    {"price_id": STRIPE_TOKEN_3, "tokens": 3, "preis": "2€", "label": "Value — 3 Analysen"},
+    {"price_id": STRIPE_TOKEN_10, "tokens": 10, "preis": "5€", "label": "Pro — 10 Analysen"},
+]
+
 st.set_page_config(page_title="TikTok AI Analyzer", page_icon="🎵", layout="wide")
 
 # ─── GLOBAL CSS ───────────────────────────────────────────────────────────────
@@ -158,6 +169,12 @@ hr { border-color: rgba(255,255,255,0.06) !important; }
 def sign_up(email, password):
     try:
         res = supabase.auth.sign_up({"email": email, "password": password})
+        if res.user:
+            # Give 1 free token on signup
+            try:
+                supabase.table("users").upsert({"id": res.user.id, "tokens": 1}).execute()
+            except:
+                pass
         return res.user, None
     except Exception as e:
         return None, str(e)
@@ -206,6 +223,49 @@ def is_premium(user_id):
         return False
     except:
         return False
+
+
+def get_tokens(user_id):
+    try:
+        result = supabase.table("users").select("tokens").eq("id", user_id).execute()
+        if result.data:
+            return result.data[0].get("tokens", 0) or 0
+        return 0
+    except:
+        return 0
+
+def deduct_token(user_id):
+    try:
+        current = get_tokens(user_id)
+        if current <= 0:
+            return False
+        supabase.table("users").update({"tokens": current - 1}).eq("id", user_id).execute()
+        return True
+    except:
+        return False
+
+def add_tokens(user_id, amount):
+    try:
+        current = get_tokens(user_id)
+        supabase.table("users").upsert({"id": user_id, "tokens": current + amount}).execute()
+        return True
+    except:
+        return False
+
+def create_token_checkout(user_email, user_id, price_id, tokens):
+    try:
+        session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            line_items=[{"price": price_id, "quantity": 1}],
+            mode="payment",
+            success_url="https://tiktok-analyser.streamlit.app?tokens_success=true",
+            cancel_url="https://tiktok-analyser.streamlit.app?canceled=true",
+            customer_email=user_email,
+            metadata={"user_id": user_id, "tokens": str(tokens)},
+        )
+        return session.url
+    except:
+        return None
 
 
 # ─── TIKTOK FUNCTIONS ─────────────────────────────────────────────────────────
@@ -1232,16 +1292,14 @@ def show_app():
                 st.caption("Erst eine Analyse starten.")
 
         if not premium:
-            st.markdown("""
-            <div style="background:rgba(255,77,77,0.04);border:0.5px solid rgba(255,77,77,0.12);
-                        border-radius:8px;padding:14px;margin:12px 0;">
+            tokens = get_tokens(user_id)
+            st.markdown(f"""
+            <div style="background:rgba(255,255,255,0.04);border:0.5px solid rgba(255,255,255,0.08);
+                        border-radius:8px;padding:12px 14px;margin-bottom:12px;text-align:center;">
                 <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
-                            color:rgba(255,77,77,0.5);margin-bottom:8px;">Premium</div>
-                <div style="font-size:11px;color:rgba(232,230,224,0.3);line-height:1.9;">
-                    ✓ Unbegrenzte Analysen<br>
-                    ✓ Dashboard + Verlauf<br>
-                    ✓ Watchtime-Analyse<br>
-                    ✓ Account-Vergleich
+                            color:rgba(232,230,224,0.25);margin-bottom:6px;">Analysen übrig</div>
+                <div style="font-family:'DM Mono',monospace;font-size:28px;color:{'#1d9e75' if tokens > 0 else '#ff4d4d'};">
+                    {tokens}
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -1260,17 +1318,44 @@ def show_app():
         """, unsafe_allow_html=True)
 
         if used_free and not premium:
-            st.markdown("""<div class="upgrade-card">
-                <div style="font-size:20px;font-weight:800;color:#e8e6e0;margin-bottom:8px;">Kostenlose Analyse verbraucht</div>
-                <div style="font-size:14px;color:rgba(232,230,224,0.4);">Upgrade auf Premium für unbegrenzte Analysen</div>
-            </div>""", unsafe_allow_html=True)
-            try:
-                checkout_url = create_checkout_session(user_email, user_id)
-                if checkout_url:
-                    st.markdown(f'<div style="text-align:center;margin-top:16px;"><a href="{checkout_url}" target="_blank"><button style="background:#ff4d4d;color:white;border:none;padding:14px 32px;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;font-family:Syne,sans-serif;">Jetzt upgraden — 19€/Monat →</button></a></div>', unsafe_allow_html=True)
-            except:
-                pass
-            return
+            tokens = get_tokens(user_id)
+            if tokens <= 0:
+                st.markdown("""<div class="upgrade-card">
+                    <div style="font-size:20px;font-weight:800;color:#e8e6e0;margin-bottom:8px;">Keine Analysen mehr übrig</div>
+                    <div style="font-size:14px;color:rgba(232,230,224,0.4);margin-bottom:20px;">Kauf weitere Analysen oder upgrade auf Premium</div>
+                </div>""", unsafe_allow_html=True)
+
+                st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+
+                # Token packages
+                cols = st.columns(3)
+                for i, pkg in enumerate(TOKEN_PACKAGES):
+                    with cols[i]:
+                        st.markdown(f"""
+                        <div style="background:rgba(255,255,255,0.02);border:0.5px solid rgba(255,255,255,0.07);
+                                    border-radius:10px;padding:20px;text-align:center;margin-bottom:8px;">
+                            <div style="font-size:13px;font-weight:700;color:#e8e6e0;margin-bottom:4px;">{pkg['label']}</div>
+                            <div style="font-family:'DM Mono',monospace;font-size:24px;color:#ff4d4d;margin-bottom:12px;">{pkg['preis']}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        try:
+                            url = create_token_checkout(user_email, user_id, pkg["price_id"], pkg["tokens"])
+                            if url:
+                                st.markdown(f'<a href="{url}" target="_blank"><button style="width:100%;background:#ff4d4d;color:white;border:none;padding:10px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Kaufen →</button></a>', unsafe_allow_html=True)
+                        except:
+                            pass
+
+                st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+                st.markdown('<div style="text-align:center;font-size:12px;color:rgba(232,230,224,0.3);">oder</div>', unsafe_allow_html=True)
+                st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+
+                try:
+                    checkout_url = create_checkout_session(user_email, user_id)
+                    if checkout_url:
+                        st.markdown(f'<div style="text-align:center;"><a href="{checkout_url}" target="_blank"><button style="background:rgba(255,255,255,0.05);color:#e8e6e0;border:0.5px solid rgba(255,255,255,0.1);padding:12px 28px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">Premium — 19€/Monat (unlimited) →</button></a></div>', unsafe_allow_html=True)
+                except:
+                    pass
+                return
 
         if "step" not in st.session_state:
             st.session_state.step = 1
@@ -1280,6 +1365,12 @@ def show_app():
             username = st.text_input("TikTok Username", placeholder="z.B. lucasbenner", label_visibility="collapsed")
             if st.button("Account scannen →", type="primary"):
                 if username:
+                    # Check token for non-premium
+                    if not premium:
+                        tokens = get_tokens(user_id)
+                        if tokens <= 0 and used_free:
+                            st.error("Keine Analysen mehr übrig. Kauf weitere Token.")
+                            st.stop()
                     with st.spinner(f"@{username} wird gescannt..."):
                         data = scrape_tiktok_account(username)
                     if data:
@@ -1446,14 +1537,33 @@ def show_app():
             st.divider()
 
             if not premium:
-                st.markdown("""<div class="upgrade-card">
-                    <div style="font-size:18px;font-weight:800;color:#e8e6e0;margin-bottom:6px;">Das war deine kostenlose Analyse</div>
-                    <div style="font-size:13px;color:rgba(232,230,224,0.4);">Premium: Dashboard, Verlauf, Watchtime & mehr</div>
+                # Deduct token
+                if used_free:
+                    deduct_token(user_id)
+                remaining = get_tokens(user_id)
+                st.markdown(f"""<div class="upgrade-card">
+                    <div style="font-size:18px;font-weight:800;color:#e8e6e0;margin-bottom:6px;">
+                        {'1 Token verbraucht' if used_free else 'Gratis-Analyse verbraucht'}
+                    </div>
+                    <div style="font-size:13px;color:rgba(232,230,224,0.4);">
+                        Noch {remaining} {'Token' if remaining != 1 else 'Token'} übrig
+                    </div>
                 </div>""", unsafe_allow_html=True)
+                st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+                cols = st.columns(3)
+                for i, pkg in enumerate(TOKEN_PACKAGES):
+                    with cols[i]:
+                        try:
+                            url = create_token_checkout(user_email, user_id, pkg["price_id"], pkg["tokens"])
+                            if url:
+                                st.markdown(f'<div style="text-align:center;"><a href="{url}" target="_blank"><button style="width:100%;background:rgba(255,255,255,0.05);color:#e8e6e0;border:0.5px solid rgba(255,255,255,0.1);padding:10px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">{pkg["label"]} — {pkg["preis"]}</button></a></div>', unsafe_allow_html=True)
+                        except:
+                            pass
+                st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
                 try:
                     checkout_url = create_checkout_session(user_email, user_id)
                     if checkout_url:
-                        st.markdown(f'<div style="text-align:center;margin-top:14px;"><a href="{checkout_url}" target="_blank"><button style="background:#ff4d4d;color:white;border:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">Jetzt upgraden — 19€/Monat →</button></a></div>', unsafe_allow_html=True)
+                        st.markdown(f'<div style="text-align:center;margin-top:8px;"><a href="{checkout_url}" target="_blank"><button style="background:#ff4d4d;color:white;border:none;padding:10px 24px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Premium — 19€/Monat (unlimited) →</button></a></div>', unsafe_allow_html=True)
                 except:
                     pass
 
