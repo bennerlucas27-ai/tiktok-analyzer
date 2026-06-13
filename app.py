@@ -735,6 +735,7 @@ Kein weiterer Text."""
                     )
                     planner_result = msg.content[0].text.strip()
                     st.session_state[planner_key] = planner_result
+                    st.rerun()
                 except Exception as e:
                     st.error(f"Fehler: {e}")
 
@@ -743,17 +744,20 @@ Kein weiterer Text."""
             result = st.session_state[planner_key]
             lines = {}
             for line in result.split("\n"):
+                line = line.strip()
+                if not line:
+                    continue
                 if "::" in line:
                     k, v = line.split("::", 1)
                     lines[k.strip()] = v.strip()
 
             moments = []
             for i in range(1, 4):
-                m = lines.get(f"MOMENT{i}")
-                w = lines.get(f"WARUM{i}")
-                h = lines.get(f"HOOK{i}")
-                if m or h:
-                    moments.append({"moment": m or "—", "warum": w or "—", "hook": h or "—"})
+                m = lines.get(f"MOMENT{i}") or lines.get(f"MOMENT {i}")
+                w = lines.get(f"WARUM{i}") or lines.get(f"WARUM {i}")
+                h = lines.get(f"HOOK{i}") or lines.get(f"HOOK {i}")
+                if h:
+                    moments.append({"moment": m or "—", "warum": w or "—", "hook": h})
 
             if moments:
                 st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
