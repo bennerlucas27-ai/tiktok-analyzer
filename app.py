@@ -690,15 +690,6 @@ Nur diese 5 Zeilen. Kein weiterer Text."""
         key="planner_input"
     )
 
-    st.markdown('<div class="section-label">Content Planer — Was machst du heute?</div>', unsafe_allow_html=True)
-
-    planner_input = st.text_input(
-        "Beschreib kurz deinen Tag",
-        placeholder="z.B. 25km Longrun morgens, danach Meal Prep, abends am Laptop",
-        label_visibility="collapsed",
-        key="planner_input"
-    )
-
     planner_key = f"planner_{today_str}_{hash(planner_input)}"
 
     if planner_input and len(planner_input) > 5:
