@@ -742,19 +742,21 @@ Kein weiterer Text."""
         # Render result
         if st.session_state.get(planner_key):
             result = st.session_state[planner_key]
-            
-            # Debug — zeig raw output
-            with st.expander("🔍 Debug"):
-                st.code(result)
-            
+
+            # Parse multiline format: KEY:: auf einer Zeile, Wert auf nächster
             lines = {}
-            for line in result.split("\n"):
-                line = line.strip()
-                if not line:
-                    continue
-                if "::" in line:
+            raw_lines = [l.strip() for l in result.split("\n") if l.strip()]
+            current_key = None
+            for line in raw_lines:
+                if line.endswith("::"):
+                    current_key = line[:-2].strip()
+                    lines[current_key] = ""
+                elif "::" in line:
                     k, v = line.split("::", 1)
                     lines[k.strip()] = v.strip()
+                    current_key = k.strip()
+                elif current_key:
+                    lines[current_key] = (lines[current_key] + " " + line).strip()
 
             moments = []
             for i in range(1, 4):
