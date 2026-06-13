@@ -552,18 +552,32 @@ def show_dashboard(user_id, user_email, premium, analyses):
     # Auto-generate if not cached
     if not cached_briefing:
         try:
-            briefing_prompt = f"""Du bist ein persönlicher TikTok Coach. Erstelle eine ultrakurze Tagesanweisung für @{latest.get('username','—')}.
+            briefing_prompt = f"""Du bist ein viraler TikTok-Stratege spezialisiert auf emotionale Hooks und Pattern Interrupts.
 
 ACCOUNT DATEN:
+- Account: @{latest.get('username','—')}
 - Nische: {latest.get('nische','—')}
 - Ø Views: {fmt(latest.get('avg_views'))}
 - Beste Posting-Zeit: {best_hours_str}
-- Top Videos: {json.dumps(top_videos[:3], ensure_ascii=False)}
-- Flop Videos: {json.dumps(flop_videos[:3], ensure_ascii=False)}
+- Top Videos (was funktioniert hat): {json.dumps(top_videos[:3], ensure_ascii=False)}
+- Flop Videos (was nicht funktioniert hat): {json.dumps(flop_videos[:3], ensure_ascii=False)}
+
+HOOK-REGELN — PFLICHT:
+- NIEMALS informative Hooks ("Hier sind 3 Tipps...")
+- IMMER emotional, unerwartet oder mitten in einer Szene
+- Nutze das große Projekt/Ziel des Accounts (Ultra Marathon, Business, Challenge usw.)
+- Verbinde mit aktuellen Trends oder Ereignissen wenn passend
+- Der Hook soll eine Frage im Kopf erzeugen die man beantworten will
+
+HOOK-TYPEN die funktionieren:
+- Mitten in einer dramatischen Szene ("Kilometer 25, ich dachte ich sterbe —")
+- Emotionale Offenbarung ("Ich hab heute beim Training geweint")
+- Unerwarteter Kontrast ("Mit 19 laufe ich was die meisten nie wagen")
+- Direkte Provokation ("Die meisten geben hier auf — ich nicht")
 
 Antworte NUR in exakt diesem Format, keine Abweichungen, kein Intro:
 
-HOOK::[fertiger Hook-Satz, max 12 Wörter]
+HOOK::[fertiger Hook-Satz, max 12 Wörter, emotional und unerwartet]
 ZEIT::[Uhrzeit, z.B. 17:00 Uhr]
 FORMAT::[z.B. 18–25 Sek · schnelle Cuts · authentisch]
 HASHTAGS::[8 Hashtags mit #, durch Leerzeichen getrennt]
@@ -573,7 +587,7 @@ Nur diese 5 Zeilen. Kein weiterer Text."""
 
             msg = client.messages.create(
                 model="claude-sonnet-4-6",
-                max_tokens=300,
+                max_tokens=500,
                 messages=[{"role": "user", "content": briefing_prompt}]
             )
             cached_briefing = msg.content[0].text.strip()
