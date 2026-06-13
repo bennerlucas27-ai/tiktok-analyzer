@@ -679,6 +679,109 @@ Nur diese 5 Zeilen. Kein weiterer Text."""
 
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
 
+    # ── CONTENT PLANNER ──
+    st.markdown('<div class="section-label">Content Planer — Was machst du heute?</div>', unsafe_allow_html=True)
+
+    planner_input = st.text_input(
+        "Beschreib kurz deinen Tag",
+        placeholder="z.B. 25km Longrun morgens, danach Meal Prep, abends am Laptop",
+        label_visibility="collapsed",
+        key="planner_input"
+    )
+
+    planner_key = f"planner_{today_str}_{hash(planner_input)}"
+
+    if planner_input and len(planner_input) > 5:
+        if st.button("🎬 Beste Video-Momente finden", type="primary", key="planner_btn"):
+            with st.spinner("KI analysiert deinen Tag..."):
+                try:
+                    planner_prompt = f"""Du bist ein viraler TikTok Content Stratege.
+
+ACCOUNT: @{latest.get('username','—')} | Nische: {latest.get('nische','—')} | Ø Views: {fmt(latest.get('avg_views'))}
+
+Der Creator hat heute folgendes vor:
+{planner_input}
+
+Identifiziere genau 3 VIDEO-MOMENTE aus diesem Tag die viral gehen können.
+Nur die 3 besten — nicht mehr.
+
+Für jeden Moment:
+- Welcher genaue Moment im Tag (konkret)
+- Warum dieser Moment viral gehen kann (1 Satz)
+- Fertiger Hook-Satz (emotional, max 10 Wörter)
+
+REGELN:
+- Nur Momente die wirklich im Text vorkommen
+- Emotional und unerwartet — kein "ich zeige euch wie ich..."
+- Nutze Pattern Interrupts und Dramatik
+
+Antworte in diesem Format:
+MOMENT1::
+WARUM1::
+HOOK1::
+MOMENT2::
+WARUM2::
+HOOK2::
+MOMENT3::
+WARUM3::
+HOOK3::
+
+Kein weiterer Text."""
+
+                    msg = client.messages.create(
+                        model="claude-sonnet-4-6",
+                        max_tokens=600,
+                        messages=[{"role": "user", "content": planner_prompt}]
+                    )
+                    planner_result = msg.content[0].text.strip()
+                    st.session_state[planner_key] = planner_result
+                except Exception as e:
+                    st.error(f"Fehler: {e}")
+
+        # Render result
+        if st.session_state.get(planner_key):
+            result = st.session_state[planner_key]
+            lines = {}
+            for line in result.split("\n"):
+                if "::" in line:
+                    k, v = line.split("::", 1)
+                    lines[k.strip()] = v.strip()
+
+            moments = []
+            for i in range(1, 4):
+                m = lines.get(f"MOMENT{i}")
+                w = lines.get(f"WARUM{i}")
+                h = lines.get(f"HOOK{i}")
+                if m or h:
+                    moments.append({"moment": m or "—", "warum": w or "—", "hook": h or "—"})
+
+            if moments:
+                st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+                cols = st.columns(len(moments))
+                for i, (col, m) in enumerate(zip(cols, moments)):
+                    with col:
+                        done = st.checkbox(f"Erledigt", key=f"planner_done_{i}_{today_str}")
+                        opacity = "0.3" if done else "1"
+                        text_deco = "line-through" if done else "none"
+                        st.markdown(f"""
+                        <div style="background:rgba(255,255,255,0.02);border:0.5px solid {'rgba(29,158,117,0.3)' if done else 'rgba(255,255,255,0.07)'};
+                                    border-radius:10px;padding:18px;opacity:{opacity};transition:all 0.2s;">
+                            <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
+                                        color:rgba(232,230,224,0.2);margin-bottom:8px;">Video {i+1}</div>
+                            <div style="font-size:15px;font-weight:700;color:#e8e6e0;line-height:1.3;margin-bottom:10px;text-decoration:{text_deco};">
+                                🎣 {m['hook']}
+                            </div>
+                            <div style="font-size:11px;color:rgba(232,230,224,0.4);margin-bottom:6px;">
+                                📍 {m['moment']}
+                            </div>
+                            <div style="font-size:11px;color:rgba(29,158,117,0.8);font-style:italic;">
+                                {m['warum']}
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
     # ── HERO METRICS ──
     st.markdown('<div class="section-label">Performance — Letzte Analyse</div>', unsafe_allow_html=True)
 
