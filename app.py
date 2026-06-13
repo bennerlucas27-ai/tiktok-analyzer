@@ -742,6 +742,11 @@ Kein weiterer Text."""
         # Render result
         if st.session_state.get(planner_key):
             result = st.session_state[planner_key]
+            
+            # Debug — zeig raw output
+            with st.expander("🔍 Debug"):
+                st.code(result)
+            
             lines = {}
             for line in result.split("\n"):
                 line = line.strip()
