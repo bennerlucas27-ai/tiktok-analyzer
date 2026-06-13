@@ -479,7 +479,8 @@ def show_auth():
                 if email and password:
                     user, error = sign_up(email, password)
                     if user:
-                        st.success("✅ Account erstellt! Jetzt einloggen.")
+                        st.success("✅ Account erstellt!")
+                        st.info("📧 Wir haben dir eine Bestätigungs-Email geschickt. Bitte bestätige deine Email bevor du dich einloggst.")
                     else:
                         st.error(f"Fehler: {error}")
 
