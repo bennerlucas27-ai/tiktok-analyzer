@@ -1386,67 +1386,90 @@ def show_app():
                     if data:
                         st.session_state.main_data = data
                         st.session_state.username = username
-                        st.success(f"✅ {len(data)} Videos geladen")
-                        with st.spinner("KI sucht Vergleichs-Accounts..."):
-                            try:
-                                suggestions = suggest_comparison_accounts(data, username)
-                                st.session_state.suggestions = suggestions
-                                st.session_state.step = 2
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"Fehler: {e}")
+                        st.session_state.step = 2
+                        st.session_state.manual_accounts = [""] * 6
+                        st.rerun()
                     else:
                         st.error("Account nicht gefunden oder privat.")
 
         elif st.session_state.step == 2:
-            suggestions = st.session_state.suggestions
             username = st.session_state.username
-            st.markdown("### Schritt 2: Vergleichs-Accounts")
-            st.markdown(f'<div style="display:inline-block;background:rgba(55,138,221,0.08);border:0.5px solid rgba(55,138,221,0.2);border-radius:6px;padding:4px 12px;font-size:12px;color:#378add;margin-bottom:16px;">Nische: {suggestions["nische"]}</div>', unsafe_allow_html=True)
-            st.caption("Du kannst Usernamen direkt bearbeiten.")
-            selected = []
-            col1, col2, col3 = st.columns(3)
-            top_accounts = [a for a in suggestions["accounts"] if a["kategorie"] == "top_performer"]
-            similar_accounts = [a for a in suggestions["accounts"] if a["kategorie"] == "aehnlich"]
-            smaller_accounts = [a for a in suggestions["accounts"] if a["kategorie"] == "kleiner"]
-            with col1:
-                st.markdown("#### 🏆 Top Performer")
-                for i, acc in enumerate(top_accounts):
-                    edited = st.text_input("Username", value=acc["username"], key=f"e_{acc['username']}_{i}")
-                    checked = st.checkbox("Einschließen", key=f"c_{acc['username']}_{i}", value=True)
-                    st.caption(acc["grund"])
-                    st.divider()
-                    if checked and edited:
-                        selected.append(edited)
-            with col2:
-                st.markdown("#### 🔄 Ähnliche Accounts")
-                for i, acc in enumerate(similar_accounts):
-                    edited = st.text_input("Username", value=acc["username"], key=f"e_{acc['username']}_{i}_s")
-                    checked = st.checkbox("Einschließen", key=f"c_{acc['username']}_{i}_s", value=True)
-                    st.caption(acc["grund"])
-                    st.divider()
-                    if checked and edited:
-                        selected.append(edited)
-            with col3:
-                st.markdown("#### 📉 Kleinere Accounts")
-                for i, acc in enumerate(smaller_accounts):
-                    edited = st.text_input("Username", value=acc["username"], key=f"e_{acc['username']}_{i}_k")
-                    checked = st.checkbox("Einschließen", key=f"c_{acc['username']}_{i}_k", value=False)
-                    st.caption(acc["grund"])
-                    st.divider()
-                    if checked and edited:
-                        selected.append(edited)
-            col_back, col_next = st.columns([1, 3])
+
+            st.markdown("### Schritt 2: Vergleichs-Accounts auswählen")
+            st.markdown("""
+            <div style="font-size:13px;color:rgba(232,230,224,0.4);margin-bottom:6px;">
+                Gib bis zu 6 TikTok Usernamen ein mit denen du verglichen werden willst.
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Info Button
+            with st.expander("❓ Was sind Vergleichs-Accounts?"):
+                st.markdown("""
+                Vergleichs-Accounts sind TikToker aus deiner Nische mit denen die KI deinen Account vergleicht.
+
+                **Beispiele:**
+                - Top-Performer in deiner Nische (viele Views, ähnliches Thema)
+                - Accounts die gerade wachsen
+                - Accounts mit ähnlicher Größe wie du
+
+                Die KI analysiert was diese Accounts besser machen und gibt dir konkrete Tipps.
+                """)
+
+            # 6 leere Felder
+            if "manual_accounts" not in st.session_state:
+                st.session_state.manual_accounts = [""] * 6
+
+            col1, col2 = st.columns(2)
+            for i in range(6):
+                with col1 if i % 2 == 0 else col2:
+                    st.session_state.manual_accounts[i] = st.text_input(
+                        f"Account {i+1}",
+                        value=st.session_state.manual_accounts[i],
+                        placeholder="z.B. maxmustermann",
+                        key=f"manual_acc_{i}",
+                        label_visibility="collapsed"
+                    )
+
+            # KI Vorschlag Button — befüllt nur leere Felder
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            col_ki, col_back, col_next = st.columns([2, 1, 2])
+
+            with col_ki:
+                if st.button("🤖 KI schlägt Accounts vor", use_container_width=True):
+                    with st.spinner("KI sucht passende Accounts..."):
+                        try:
+                            suggestions = suggest_comparison_accounts(
+                                st.session_state.main_data, username
+                            )
+                            st.session_state.suggestions = suggestions
+                            # Nur leere Felder befüllen
+                            ki_accounts = [a["username"] for a in suggestions["accounts"]]
+                            ki_idx = 0
+                            for i in range(6):
+                                if not st.session_state.manual_accounts[i] and ki_idx < len(ki_accounts):
+                                    st.session_state.manual_accounts[i] = ki_accounts[ki_idx]
+                                    ki_idx += 1
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Fehler: {e}")
+
             with col_back:
-                if st.button("← Zurück"):
+                if st.button("← Zurück", use_container_width=True):
                     st.session_state.step = 1
+                    st.session_state.manual_accounts = [""] * 6
                     st.rerun()
+
             with col_next:
-                if st.button("Vergleich starten →", type="primary"):
+                selected = [a.strip() for a in st.session_state.manual_accounts if a.strip()]
+                if st.button("Vergleich starten →", type="primary", use_container_width=True):
                     if selected:
                         st.session_state.selected_accounts = selected
+                        if "suggestions" not in st.session_state:
+                            st.session_state.suggestions = {"nische": "Unbekannt", "accounts": []}
                         st.session_state.step = 3
                         st.rerun()
+                    else:
+                        st.warning("Gib mindestens einen Account ein.")
 
         elif st.session_state.step == 3:
             username = st.session_state.username
