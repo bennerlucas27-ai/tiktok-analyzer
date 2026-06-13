@@ -689,10 +689,60 @@ Nur diese 5 Zeilen. Kein weiterer Text."""
         key="planner_input"
     )
 
+    st.markdown('<div class="section-label">Content Planer — Was machst du heute?</div>', unsafe_allow_html=True)
+
+    planner_input = st.text_input(
+        "Beschreib kurz deinen Tag",
+        placeholder="z.B. 25km Longrun morgens, danach Meal Prep, abends am Laptop",
+        label_visibility="collapsed",
+        key="planner_input"
+    )
+
     planner_key = f"planner_{today_str}_{hash(planner_input)}"
 
     if planner_input and len(planner_input) > 5:
-        if st.button("🎬 Beste Video-Momente finden", type="primary", key="planner_btn"):
+        col_btn1, col_btn2 = st.columns([2, 2])
+        with col_btn1:
+            find_moments = st.button("🎬 Beste Video-Momente finden", type="primary", key="planner_btn", use_container_width=True)
+        with col_btn2:
+            update_hook = st.button("🎣 Hook auf meinen Tag anpassen", key="update_hook_btn", use_container_width=True)
+
+        if update_hook:
+            with st.spinner("Hook wird angepasst..."):
+                try:
+                    hook_update_prompt = f"""Du bist ein viraler TikTok-Stratege.
+
+ACCOUNT: @{latest.get('username','—')} | Nische: {latest.get('nische','—')}
+Heute: {planner_input}
+
+Erstelle eine angepasste Tagesanweisung basierend auf dem heutigen Tag.
+Nutze konkrete Momente aus dem Tag für den Hook.
+
+Antworte NUR in exakt diesem Format:
+HOOK::[fertiger Hook-Satz, max 12 Wörter, emotional, basierend auf dem heutigen Tag]
+ZEIT::[beste Uhrzeit heute]
+FORMAT::[Videolänge · Stil · Ton]
+HASHTAGS::[8 Hashtags mit #]
+AKTION::[Eine konkrete Sache heute, basierend auf dem Tag]
+
+Nur diese 5 Zeilen. Kein weiterer Text."""
+
+                    msg = client.messages.create(
+                        model="claude-sonnet-4-6",
+                        max_tokens=300,
+                        messages=[{"role": "user", "content": hook_update_prompt}]
+                    )
+                    new_briefing = msg.content[0].text.strip()
+                    st.session_state[briefing_key] = new_briefing
+                    st.success("✅ Hook angepasst!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Fehler: {e}")
+    else:
+        find_moments = False
+
+    if planner_input and len(planner_input) > 5:
+        if find_moments:
             with st.spinner("KI analysiert deinen Tag..."):
                 try:
                     planner_prompt = f"""Du bist ein viraler TikTok Content Stratege.
