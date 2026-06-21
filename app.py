@@ -569,9 +569,11 @@ HOOK-REGELN — PFLICHT:
 - Nutze das große Projekt/Ziel des Accounts (Ultra Marathon, Business, Challenge usw.)
 - Verbinde mit aktuellen Trends oder Ereignissen wenn passend
 - Der Hook soll eine Frage im Kopf erzeugen die man beantworten will
+- KRITISCH: Erfinde NIEMALS konkrete Fakten, Zahlen, Distanzen oder Ereignisse die nicht aus den Account-Daten oben hervorgehen (z.B. nicht "Kilometer 38" erfinden, wenn die Distanz nicht bekannt ist). Nutze stattdessen Platzhalter-Sprache wie "Heute bei Kilometer X —" oder beschreibe das Gefühl statt einer erfundenen Zahl.
+- Der Hook muss zu jeder beliebigen echten Trainingseinheit passen können, ohne dass der Creator eine Tatsache vortäuschen muss
 
-HOOK-TYPEN die funktionieren:
-- Mitten in einer dramatischen Szene ("Kilometer 25, ich dachte ich sterbe —")
+HOOK-TYPEN die funktionieren (als Stilvorbild, NICHT als Faktenquelle):
+- Mitten in einer dramatischen Szene ohne erfundene Zahl ("Mein Körper sagte Stopp — ich nicht")
 - Emotionale Offenbarung ("Ich hab heute beim Training geweint")
 - Unerwarteter Kontrast ("Mit 19 laufe ich was die meisten nie wagen")
 - Direkte Provokation ("Die meisten geben hier auf — ich nicht")
