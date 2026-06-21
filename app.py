@@ -565,21 +565,22 @@ ACCOUNT DATEN:
 - Flop Videos (was nicht funktioniert hat): {json.dumps(flop_videos[:3], ensure_ascii=False)}
 
 HOOK-REGELN — PFLICHT:
+- Die Account-Nische ist "{latest.get('nische','—')}" — der Hook MUSS thematisch zu DIESER Nische passen, egal ob Sport, Business, Beauty, Comedy, Food, Gaming, Reisen oder irgendetwas anderes
 - NIEMALS informative Hooks ("Hier sind 3 Tipps...")
 - IMMER emotional, unerwartet oder mitten in einer Szene
-- Nutze das große Projekt/Ziel des Accounts (Ultra Marathon, Business, Challenge usw.)
+- Nutze das große Projekt/Ziel des Accounts falls aus den Daten erkennbar
 - Verbinde mit aktuellen Trends oder Ereignissen wenn passend
 - Der Hook soll eine Frage im Kopf erzeugen die man beantworten will
 - KRITISCH: Erfinde NIEMALS konkrete Fakten, Zahlen, Distanzen oder Ereignisse die nicht aus den Account-Daten oben hervorgehen. Beschreibe stattdessen ein Gefühl, einen Gedanken oder eine Handlung — keine erfundene Kilometerzahl oder erfundenes Detail.
 - WICHTIG FÜR VARIATION: Wähle bei jeder Generierung eine andere Perspektive/Emotion (z.B. abwechselnd: Zweifel, Stolz, Wut, Erschöpfung, Entschlossenheit, Selbstironie, Vorfreude, Einsamkeit). Wiederhole nicht denselben Satzbau wie "Mein Körper sagte X — ich Y". Variiere Tonfall, Satzlänge und Blickwinkel deutlich von Versuch zu Versuch.
 
-HOOK-TYPEN als Stilvorbild (NICHT kopieren, nur Inspiration für den Ton):
-- Mitten in einer dramatischen Szene ohne erfundene Zahl ("Mein Körper sagte Stopp — ich nicht")
-- Emotionale Offenbarung ("Ich hab heute beim Training geweint")
-- Unerwarteter Kontrast ("Mit 19 mache ich was die meisten nie wagen")
+HOOK-TYPEN als Stilvorbild — wähle den Typ der zur Nische "{latest.get('nische','—')}" passt, die Beispiel-Themen sind nur Inspiration für den TON, nicht zum Kopieren:
+- Mitten in einer dramatischen Szene ohne erfundene Zahl (Sport: "Mein Körper sagte Stopp — ich nicht" / Business: "Der Kunde sagte nein — ich hab nicht aufgelegt" / Beauty: "Ich hab geweint vorm Spiegel — heute zeig ich warum")
+- Emotionale Offenbarung — passend zur Nische formuliert
+- Unerwarteter Kontrast (Alter, Erfahrung, Erwartung vs. Realität) — passend zur Nische
 - Direkte Provokation ("Die meisten geben hier auf — ich nicht")
-- Selbstironisch ("Mein Trainer würde heute nicht stolz auf mich sein")
-- Stille Beobachtung ("Niemand sieht diesen Teil des Trainings")
+- Selbstironisch — eigene Schwäche zugeben, passend zur Nische
+- Stille Beobachtung ("Niemand sieht diesen Teil von [Tätigkeit aus der Nische]")
 
 Antworte NUR in exakt diesem Format, keine Abweichungen, kein Intro:
 
