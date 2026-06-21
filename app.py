@@ -5,6 +5,7 @@ import os
 import json
 import time
 import re
+import random
 import pandas as pd
 from datetime import datetime, timezone
 from dotenv import load_dotenv
@@ -569,14 +570,16 @@ HOOK-REGELN — PFLICHT:
 - Nutze das große Projekt/Ziel des Accounts (Ultra Marathon, Business, Challenge usw.)
 - Verbinde mit aktuellen Trends oder Ereignissen wenn passend
 - Der Hook soll eine Frage im Kopf erzeugen die man beantworten will
-- KRITISCH: Erfinde NIEMALS konkrete Fakten, Zahlen, Distanzen oder Ereignisse die nicht aus den Account-Daten oben hervorgehen (z.B. nicht "Kilometer 38" erfinden, wenn die Distanz nicht bekannt ist). Nutze stattdessen Platzhalter-Sprache wie "Heute bei Kilometer X —" oder beschreibe das Gefühl statt einer erfundenen Zahl.
-- Der Hook muss zu jeder beliebigen echten Trainingseinheit passen können, ohne dass der Creator eine Tatsache vortäuschen muss
+- KRITISCH: Erfinde NIEMALS konkrete Fakten, Zahlen, Distanzen oder Ereignisse die nicht aus den Account-Daten oben hervorgehen. Beschreibe stattdessen ein Gefühl, einen Gedanken oder eine Handlung — keine erfundene Kilometerzahl oder erfundenes Detail.
+- WICHTIG FÜR VARIATION: Wähle bei jeder Generierung eine andere Perspektive/Emotion (z.B. abwechselnd: Zweifel, Stolz, Wut, Erschöpfung, Entschlossenheit, Selbstironie, Vorfreude, Einsamkeit). Wiederhole nicht denselben Satzbau wie "Mein Körper sagte X — ich Y". Variiere Tonfall, Satzlänge und Blickwinkel deutlich von Versuch zu Versuch.
 
-HOOK-TYPEN die funktionieren (als Stilvorbild, NICHT als Faktenquelle):
+HOOK-TYPEN als Stilvorbild (NICHT kopieren, nur Inspiration für den Ton):
 - Mitten in einer dramatischen Szene ohne erfundene Zahl ("Mein Körper sagte Stopp — ich nicht")
 - Emotionale Offenbarung ("Ich hab heute beim Training geweint")
-- Unerwarteter Kontrast ("Mit 19 laufe ich was die meisten nie wagen")
+- Unerwarteter Kontrast ("Mit 19 mache ich was die meisten nie wagen")
 - Direkte Provokation ("Die meisten geben hier auf — ich nicht")
+- Selbstironisch ("Mein Trainer würde heute nicht stolz auf mich sein")
+- Stille Beobachtung ("Niemand sieht diesen Teil des Trainings")
 
 Antworte NUR in exakt diesem Format, keine Abweichungen, kein Intro:
 
@@ -586,11 +589,14 @@ FORMAT::[z.B. 18–25 Sek · schnelle Cuts · authentisch]
 HASHTAGS::[8 Hashtags mit #, durch Leerzeichen getrennt]
 AKTION::[Eine konkrete Sache heute anders machen, max 1 Satz]
 
-Nur diese 5 Zeilen. Kein weiterer Text."""
+Nur diese 5 Zeilen. Kein weiterer Text.
+
+(Variations-Anker, nicht erwähnen: {random.choice(['Zweifel','Stolz','Wut','Erschöpfung','Entschlossenheit','Selbstironie','Vorfreude','Einsamkeit','Trotz','Erleichterung'])})"""
 
             msg = client.messages.create(
                 model="claude-sonnet-4-6",
                 max_tokens=500,
+                temperature=1.0,
                 messages=[{"role": "user", "content": briefing_prompt}]
             )
             cached_briefing = msg.content[0].text.strip()
