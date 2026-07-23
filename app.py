@@ -525,6 +525,20 @@ def show_dashboard(user_id, user_email, premium, analyses):
         st.info("Noch keine Analyse vorhanden. Starte deine erste Analyse!")
         return
 
+    # ── CONTENT PLANNER ZUERST ──
+    st.markdown('<div class="section-label">Was machst du heute?</div>', unsafe_allow_html=True)
+
+    planner_input = st.text_input(
+        "Beschreib kurz deinen Tag",
+        placeholder="z.B. 25km Longrun morgens, danach Meal Prep, abends am Laptop",
+        label_visibility="collapsed",
+        key="planner_input"
+    )
+
+    planner_key = f"planner_{today_str}_{hash(planner_input)}"
+
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
     # ── TÄGLICHE KI ANWEISUNG ──
     today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     briefing_key = f"daily_briefing_v2_{latest.get('id','')}_{today_str}"
@@ -689,18 +703,7 @@ Nur diese 5 Zeilen. Kein weiterer Text.
 
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
 
-    # ── CONTENT PLANNER ──
-    st.markdown('<div class="section-label">Content Planer — Was machst du heute?</div>', unsafe_allow_html=True)
-
-    planner_input = st.text_input(
-        "Beschreib kurz deinen Tag",
-        placeholder="z.B. 25km Longrun morgens, danach Meal Prep, abends am Laptop",
-        label_visibility="collapsed",
-        key="planner_input"
-    )
-
-    planner_key = f"planner_{today_str}_{hash(planner_input)}"
-
+    # ── CONTENT PLANER BUTTONS + RESULTS ──
     if planner_input and len(planner_input) > 5:
         col_btn1, col_btn2 = st.columns([2, 2])
         with col_btn1:
