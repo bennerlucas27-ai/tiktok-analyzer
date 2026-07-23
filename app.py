@@ -525,6 +525,8 @@ def show_dashboard(user_id, user_email, premium, analyses):
         st.info("Noch keine Analyse vorhanden. Starte deine erste Analyse!")
         return
 
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
     # ── CONTENT PLANNER ZUERST ──
     st.markdown('<div class="section-label">Was machst du heute?</div>', unsafe_allow_html=True)
 
@@ -540,7 +542,6 @@ def show_dashboard(user_id, user_email, premium, analyses):
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
 
     # ── TÄGLICHE KI ANWEISUNG ──
-    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     briefing_key = f"daily_briefing_v2_{latest.get('id','')}_{today_str}"
     cached_briefing = st.session_state.get(briefing_key)
     # Invalidate old format (HTML or multi-line cards)
