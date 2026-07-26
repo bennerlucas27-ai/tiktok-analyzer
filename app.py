@@ -510,7 +510,7 @@ Hildegard-Beck-Weg 10
 Deutschland
 
 **Kontakt:**  
-E-Mail: ugcbylucas@outlook.de  
+E-Mail: tiktok.ai.analyser@gmail.com  
 Telefon: +49 176 84909693
 
 **Haftungsausschluss:**  
@@ -526,7 +526,7 @@ Lucas Benner (Adresse wie oben)
 
 **Verantwortlicher:**  
 Lucas Benner, Hildegard-Beck-Weg 10, 91550 Dinkelsbühl  
-E-Mail: ugcbylucas@outlook.de
+E-Mail: tiktok.ai.analyser@gmail.com
 
 **Erhobene Daten:**  
 Bei der Registrierung speichern wir deine E-Mail-Adresse zur Authentifizierung. Bei der Nutzung des Tools werden TikTok-Accountdaten (öffentlich verfügbare Informationen wie Views, Likes, Beschreibungen) temporär verarbeitet und analysiert.
@@ -535,7 +535,7 @@ Bei der Registrierung speichern wir deine E-Mail-Adresse zur Authentifizierung. 
 Die Daten werden ausschließlich zur Bereitstellung der Analysefunktion genutzt.
 
 **Deine Rechte:**  
-Du hast das Recht auf Auskunft, Berichtigung, Löschung und Einschränkung der Verarbeitung deiner Daten. Kontakt: ugcbylucas@outlook.de
+Du hast das Recht auf Auskunft, Berichtigung, Löschung und Einschränkung der Verarbeitung deiner Daten. Kontakt: tiktok.ai.analyser@gmail.com
 
 **Hinweis zur TikTok-Analyse:**  
 Bitte analysiere ausschließlich Accounts für die du die Berechtigung besitzt. Die Nutzung fremder Accounts ohne Erlaubnis liegt in deiner eigenen Verantwortung.
