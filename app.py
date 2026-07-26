@@ -35,7 +35,7 @@ TOKEN_PACKAGES = [
     {"price_id": STRIPE_TOKEN_10, "tokens": 10, "preis": "5€", "label": "Pro — 10 Analysen"},
 ]
 
-st.set_page_config(page_title="TikTok AI Analyzer", page_icon="🎵", layout="wide")
+st.set_page_config(page_title="Viralyzr", page_icon="🎵", layout="wide")
 
 # ─── GLOBAL CSS ───────────────────────────────────────────────────────────────
 
@@ -199,8 +199,8 @@ def create_checkout_session(user_email, user_id):
             payment_method_types=["card"],
             line_items=[{"price": STRIPE_PRICE_ID, "quantity": 1}],
             mode="subscription",
-            success_url="https://tiktok-analyser.streamlit.app?success=true",
-            cancel_url="https://tiktok-analyser.streamlit.app?canceled=true",
+            success_url="https://viralyzr.de?success=true",
+            cancel_url="https://viralyzr.de?canceled=true",
             customer_email=user_email,
             metadata={"user_id": user_id},
             automatic_tax={"enabled": True},
@@ -259,8 +259,8 @@ def create_token_checkout(user_email, user_id, price_id, tokens):
             payment_method_types=["card"],
             line_items=[{"price": price_id, "quantity": 1}],
             mode="payment",
-            success_url="https://tiktok-analyser.streamlit.app?tokens_success=true",
-            cancel_url="https://tiktok-analyser.streamlit.app?canceled=true",
+            success_url="https://viralyzr.de?tokens_success=true",
+            cancel_url="https://viralyzr.de?canceled=true",
             customer_email=user_email,
             metadata={"user_id": user_id, "tokens": str(tokens)},
         )
@@ -449,7 +449,7 @@ def show_auth():
         st.markdown("""
         <div style="text-align:center;padding:48px 0 28px;">
             <div style="font-size:11px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;
-                        color:rgba(232,230,224,0.2);margin-bottom:14px;">TikTok AI Analyzer</div>
+                        color:rgba(232,230,224,0.2);margin-bottom:14px;">Viralyzr</div>
             <div style="font-family:'Syne',sans-serif;font-size:30px;font-weight:800;
                         color:#e8e6e0;line-height:1.15;margin-bottom:10px;">
                 Versteh deinen Content.<br>Wirklich.
@@ -491,7 +491,61 @@ def show_auth():
                 ✓ 1 kostenlose Analyse &nbsp;·&nbsp; ✓ Kein Abo nötig &nbsp;·&nbsp; ✓ Premium ab 19€/Mo
             </span>
         </div>
+        <div style="text-align:center;margin-top:12px;">
+            <span style="font-size:10px;color:rgba(232,230,224,0.12);">
+                <a href="#" onclick="document.getElementById('impressum').style.display='block'" style="color:rgba(232,230,224,0.2);text-decoration:none;">Impressum</a>
+                &nbsp;·&nbsp;
+                <a href="#" onclick="document.getElementById('datenschutz').style.display='block'" style="color:rgba(232,230,224,0.2);text-decoration:none;">Datenschutz</a>
+            </span>
+        </div>
         """, unsafe_allow_html=True)
+
+        with st.expander("📄 Impressum"):
+            st.markdown("""
+**Angaben gemäß § 5 TMG:**
+
+Lucas Benner  
+Hildegard-Beck-Weg 10  
+91550 Dinkelsbühl  
+Deutschland
+
+**Kontakt:**  
+E-Mail: ugcbylucas@outlook.de  
+Telefon: +49 176 84909693
+
+**Haftungsausschluss:**  
+Trotz sorgfältiger inhaltlicher Kontrolle übernehme ich keine Haftung für die Inhalte externer Links. Für den Inhalt der verlinkten Seiten sind ausschließlich deren Betreiber verantwortlich.
+
+**Verantwortlich für den Inhalt nach § 55 Abs. 2 RStV:**  
+Lucas Benner (Adresse wie oben)
+            """)
+
+        with st.expander("🔒 Datenschutzerklärung"):
+            st.markdown("""
+**Datenschutzerklärung**
+
+**Verantwortlicher:**  
+Lucas Benner, Hildegard-Beck-Weg 10, 91550 Dinkelsbühl  
+E-Mail: ugcbylucas@outlook.de
+
+**Erhobene Daten:**  
+Bei der Registrierung speichern wir deine E-Mail-Adresse zur Authentifizierung. Bei der Nutzung des Tools werden TikTok-Accountdaten (öffentlich verfügbare Informationen wie Views, Likes, Beschreibungen) temporär verarbeitet und analysiert.
+
+**Zweck der Verarbeitung:**  
+Die Daten werden ausschließlich zur Bereitstellung der Analysefunktion genutzt.
+
+**Deine Rechte:**  
+Du hast das Recht auf Auskunft, Berichtigung, Löschung und Einschränkung der Verarbeitung deiner Daten. Kontakt: ugcbylucas@outlook.de
+
+**Hinweis zur TikTok-Analyse:**  
+Bitte analysiere ausschließlich Accounts für die du die Berechtigung besitzt. Die Nutzung fremder Accounts ohne Erlaubnis liegt in deiner eigenen Verantwortung.
+
+**Hosting:**  
+Diese App wird über Streamlit Cloud (USA) gehostet. Weitere Informationen: streamlit.io/privacy-policy
+
+**Zahlungsabwicklung:**  
+Zahlungen werden über Stripe verarbeitet. Weitere Informationen: stripe.com/de/privacy
+            """)
 
 
 # ─── DASHBOARD ────────────────────────────────────────────────────────────────
@@ -1505,7 +1559,7 @@ def show_app():
         st.markdown("""
         <div style="padding:22px 2px 12px;">
             <div style="font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;
-                        color:rgba(232,230,224,0.2);margin-bottom:6px;">TikTok AI Analyzer</div>
+                        color:rgba(232,230,224,0.2);margin-bottom:6px;">Viralyzr</div>
             <div style="font-size:24px;font-weight:800;color:#e8e6e0;">Neue Analyse starten</div>
         </div>
         """, unsafe_allow_html=True)
@@ -1554,7 +1608,8 @@ def show_app():
             st.session_state.step = 1
 
         if st.session_state.step == 1:
-            st.markdown('<div style="font-size:13px;color:rgba(232,230,224,0.35);margin-bottom:18px;">Analyse basiert auf den letzten 50 Videos.</div>', unsafe_allow_html=True)
+            st.markdown('<div style="font-size:13px;color:rgba(232,230,224,0.35);margin-bottom:8px;">Analyse basiert auf den letzten 50 Videos.</div>', unsafe_allow_html=True)
+            st.markdown('<div style="font-size:11px;color:rgba(255,165,0,0.6);margin-bottom:16px;">⚠️ Bitte analysiere nur Accounts für die du die Berechtigung hast.</div>', unsafe_allow_html=True)
             username = st.text_input("TikTok Username", placeholder="z.B. lucasbenner", label_visibility="collapsed")
             if st.button("Account scannen →", type="primary"):
                 if username:
