@@ -368,7 +368,7 @@ def full_comparison_analysis(main_username, main_videos_dict, comparison_account
     main_total_likes = sum(v["likes"] for v in newest)
     main_avg_views = main_total_views // len(newest) if newest else 0
     main_avg_engagement = round((main_total_likes / main_total_views * 100) if main_total_views > 0 else 0, 2)
-    prompt = f"""Du bist ein Expert für TikTok Analytics. Erstelle eine Vergleichsanalyse für @{main_username} in der Nische: {nische}
+    prompt = f"""Du bist ein nüchterner TikTok Analytics Experte. Erstelle eine ehrliche, datenbasierte Vergleichsanalyse für @{main_username} in der Nische: {nische}
 
 HAUPTACCOUNT @{main_username}:
 - Ø Views (letzte 30): {main_avg_views:,}
@@ -379,14 +379,30 @@ HAUPTACCOUNT @{main_username}:
 VERGLEICHS-ACCOUNTS:
 {json.dumps(comparison_summary, ensure_ascii=False, indent=2)}
 
+WICHTIGE REGELN FÜR DIE ANALYSE:
+- Zeige nur was die Daten wirklich zeigen — keine spekulativen Kausal-Behauptungen
+- Korrelation ist keine Kausalität: Wenn Top-Performer Hashtag X nutzen, schreibe "Top-Performer nutzen X — du nicht" und NICHT "du hättest mit X doppelt so viele Views gehabt"
+- Keine forschen Versprechen wie "in 90 Tagen überholen" — bleibe bei beobachtbaren Mustern
+- Wenn etwas unklar ist, sage es direkt
+- Formuliere Potenziale als Möglichkeiten, nicht als Garantien ("könnte", "deutet darauf hin", "zeigt das Muster")
+
 Erstelle eine strukturierte Analyse auf Deutsch:
 ## 1. 📊 Positions-Analyse
-## 2. 🏆 Was Top-Performer besser machen
-## 3. 📈 Wachstumspotenzial
-## 4. 🎯 5 konkrete Aktionen
-## 5. ⚠️ Was sofort aufgehört werden sollte
+Wo steht der Account wirklich im Vergleich — nüchtern und ehrlich, inkl. Hinweis auf Ausreißer die den Schnitt verzerren
 
-Sei konkret und direkt."""
+## 2. 🏆 Was Top-Performer anders machen
+Konkrete beobachtbare Unterschiede in Hashtags, Format, Länge, Posting-Verhalten — als Muster, nicht als Kausalität
+
+## 3. 📈 Muster und Chancen
+Was zeigen die Daten an Möglichkeiten — vorsichtig formuliert, keine Garantien
+
+## 4. 🎯 5 konkrete Aktionen
+Direkt umsetzbar, basierend auf echten Datenpunkten aus dem Vergleich
+
+## 5. ⚠️ Was die Daten klar zeigen was nicht funktioniert
+Nur was wirklich aus den Zahlen hervorgeht
+
+Sei direkt, ehrlich und nüchtern. Keine Hype-Sprache."""
     message = client.messages.create(model="claude-sonnet-4-6", max_tokens=4000, messages=[{"role": "user", "content": prompt}])
     return message.content[0].text, main_avg_views, main_avg_engagement
 
