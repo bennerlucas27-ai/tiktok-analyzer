@@ -361,7 +361,6 @@ def full_comparison_analysis(main_username, main_videos_dict, comparison_account
             comparison_summary[uname] = {
                 "avg_views": avg_views,
                 "avg_engagement": round((total_likes / total_views * 100) if total_views > 0 else 0, 2),
-                "top_hashtags": list(set([h for v in videos for h in (v["hashtags"] if isinstance(v["hashtags"], list) else [])]))[:10],
                 "avg_duration": round(sum(v["dauer"] for v in videos) / len(videos), 1),
             }
     main_total_views = sum(v["views"] for v in newest)
