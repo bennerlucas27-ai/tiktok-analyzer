@@ -171,9 +171,8 @@ def sign_up(email, password):
     try:
         res = supabase.auth.sign_up({"email": email, "password": password})
         if res.user:
-            # Give 1 free token on signup
             try:
-                supabase.table("users").upsert({"id": res.user.id, "tokens": 1}).execute()
+                supabase.table("users").upsert({"id": res.user.id, "tokens": 1, "is_premium": True}).execute()
             except:
                 pass
         return res.user, None
@@ -503,7 +502,7 @@ def show_auth():
         st.markdown("""
         <div style="text-align:center;margin-top:18px;">
             <span style="font-size:11px;color:rgba(232,230,224,0.18);">
-                ✓ 1 kostenlose Analyse &nbsp;·&nbsp; ✓ Kein Abo nötig &nbsp;·&nbsp; ✓ Premium ab 19€/Mo
+                ✓ 1 kostenlose Analyse &nbsp;·&nbsp; ✓ Kein Abo nötig &nbsp;·&nbsp; ✓ Premium ab 0,00€/Mo
             </span>
         </div>
         <div style="text-align:center;margin-top:12px;">
@@ -1614,7 +1613,7 @@ def show_app():
                 try:
                     checkout_url = create_checkout_session(user_email, user_id)
                     if checkout_url:
-                        st.markdown(f'<div style="text-align:center;"><a href="{checkout_url}" target="_blank"><button style="background:rgba(255,255,255,0.05);color:#e8e6e0;border:0.5px solid rgba(255,255,255,0.1);padding:12px 28px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">Premium — 19€/Monat (unlimited) →</button></a></div>', unsafe_allow_html=True)
+                        st.markdown(f'<div style="text-align:center;"><a href="{checkout_url}" target="_blank"><button style="background:rgba(255,255,255,0.05);color:#e8e6e0;border:0.5px solid rgba(255,255,255,0.1);padding:12px 28px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">Premium — 0,00€/Monat (unlimited) →</button></a></div>', unsafe_allow_html=True)
                 except:
                     pass
                 return
@@ -1849,7 +1848,7 @@ def show_app():
                 try:
                     checkout_url = create_checkout_session(user_email, user_id)
                     if checkout_url:
-                        st.markdown(f'<div style="text-align:center;margin-top:8px;"><a href="{checkout_url}" target="_blank"><button style="background:#ff4d4d;color:white;border:none;padding:10px 24px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Premium — 19€/Monat (unlimited) →</button></a></div>', unsafe_allow_html=True)
+                        st.markdown(f'<div style="text-align:center;margin-top:8px;"><a href="{checkout_url}" target="_blank"><button style="background:#ff4d4d;color:white;border:none;padding:10px 24px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Premium — 0,00€/Monat (unlimited) →</button></a></div>', unsafe_allow_html=True)
                 except:
                     pass
 
