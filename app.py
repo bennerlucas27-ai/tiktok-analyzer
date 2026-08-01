@@ -322,23 +322,87 @@ def extract_video_data(data):
         "all": videos
     }
 
+def validate_account_exists(username):
+    """Schnell prüfen ob ein Account existiert und öffentlich ist — ohne volle Analyse."""
+    try:
+        url = f"https://api.apify.com/v2/acts/clockworks~tiktok-profile-scraper/runs"
+        payload = {"profiles": [username], "resultsPerPage": 3, "shouldDownloadVideos": False, "shouldDownloadCovers": False}
+        params = {"token": APIFY_API_TOKEN}
+        response = requests.post(url, json=payload, params=params, timeout=15)
+        if response.status_code != 201:
+            return False
+        run_id = response.json()["data"]["id"]
+        status_url = f"https://api.apify.com/v2/actor-runs/{run_id}"
+        for _ in range(12):
+            time.sleep(5)
+            status_resp = requests.get(status_url, params=params)
+            status = status_resp.json()["data"]["status"]
+            if status == "SUCCEEDED":
+                dataset_id = status_resp.json()["data"]["defaultDatasetId"]
+                items = requests.get(f"https://api.apify.com/v2/datasets/{dataset_id}/items", params=params).json()
+                return len(items) > 0
+            elif status in ["FAILED", "ABORTED"]:
+                return False
+        return False
+    except:
+        return False
+
+def get_verified_accounts(nische, limit=10):
+    """Holt validierte Accounts aus der Community-Liste für eine Nische."""
+    try:
+        result = supabase.table("verified_accounts").select("username, avg_views").ilike("nische", f"%{nische.split()[0]}%").order("avg_views", desc=True).limit(limit).execute()
+        return [r["username"] for r in result.data] if result.data else []
+    except:
+        return []
+
+def save_verified_account(username, nische, avg_views):
+    """Speichert einen validierten Account in der Community-Liste."""
+    try:
+        supabase.table("verified_accounts").upsert({
+            "username": username,
+            "nische": nische,
+            "avg_views": avg_views,
+            "zuletzt_aktiv": datetime.now(timezone.utc).isoformat()
+        }).execute()
+    except:
+        pass
+
 def suggest_comparison_accounts(main_data, username):
     profile_info = {"username": username, "videos": []}
     for item in main_data[:10]:
         profile_info["videos"].append({"beschreibung": item.get("text", ""), "hashtags": item.get("hashtags", []), "views": item.get("playCount", 0)})
+
+    # Erst Nische erkennen
+    nischen_prompt = f"""Analysiere diesen TikTok Account und erkenne die Nische.
+Account: @{username}
+Videos: {json.dumps(profile_info["videos"][:5], ensure_ascii=False)}
+Antworte NUR mit der Nische in 2-4 Wörtern, kein weiterer Text."""
+    nischen_msg = client.messages.create(model="claude-sonnet-4-6", max_tokens=50, messages=[{"role": "user", "content": nischen_prompt}])
+    nische = nischen_msg.content[0].text.strip()
+
+    # Community-Liste prüfen
+    verified = get_verified_accounts(nische, limit=6)
+
     prompt = f"""Analysiere diesen TikTok Account und schlage passende Vergleichs-Accounts vor.
 Account: @{username}
+Nische: {nische}
 Videos: {json.dumps(profile_info["videos"], ensure_ascii=False, indent=2)}
+
+BEREITS VALIDIERTE ACCOUNTS IN DIESER NISCHE (bevorzuge diese wenn möglich):
+{json.dumps(verified, ensure_ascii=False)}
 
 Schlage exakt 6 reale aktive TikTok Accounts vor (in letzten 30 Tagen gepostet, nicht privat):
 - 2 Top-Performer (min. 100k Follower)
 - 2 ähnlich große Accounts
 - 2 kleinere Accounts
 
+WICHTIG: Schlage nur Accounts vor von denen du dir SICHER bist dass sie existieren und aktiv sind.
+Bevorzuge Accounts aus der validierten Liste oben.
 Bevorzuge deutschsprachige Accounts.
 
 Antworte NUR in diesem JSON Format:
-{{"nische": "...", "accounts": [{{"username": "...", "kategorie": "top_performer", "grund": "..."}}, {{"username": "...", "kategorie": "top_performer", "grund": "..."}}, {{"username": "...", "kategorie": "aehnlich", "grund": "..."}}, {{"username": "...", "kategorie": "aehnlich", "grund": "..."}}, {{"username": "...", "kategorie": "kleiner", "grund": "..."}}, {{"username": "...", "kategorie": "kleiner", "grund": "..."}}]}}"""
+{{"nische": "{nische}", "accounts": [{{"username": "...", "kategorie": "top_performer", "grund": "..."}}, {{"username": "...", "kategorie": "top_performer", "grund": "..."}}, {{"username": "...", "kategorie": "aehnlich", "grund": "..."}}, {{"username": "...", "kategorie": "aehnlich", "grund": "..."}}, {{"username": "...", "kategorie": "kleiner", "grund": "..."}}, {{"username": "...", "kategorie": "kleiner", "grund": "..."}}]}}"""
+
     message = client.messages.create(model="claude-sonnet-4-6", max_tokens=1000, messages=[{"role": "user", "content": prompt}])
     text = message.content[0].text.replace("```json", "").replace("```", "").strip()
     match = re.search(r'\{.*\}', text, re.DOTALL)
@@ -1762,6 +1826,9 @@ def show_app():
                         time.sleep(2)
                     else:
                         comparison_data[acc] = extracted
+                        # In Community-Liste speichern
+                        acc_views = sum(v["views"] for v in newest_check) // len(newest_check) if newest_check else 0
+                        save_verified_account(acc, suggestions.get("nische", ""), acc_views)
                 progress_bar.progress((i + 1) / len(selected_accounts))
 
             status_text.text("KI analysiert alle Daten...")
