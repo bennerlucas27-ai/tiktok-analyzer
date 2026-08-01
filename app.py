@@ -397,7 +397,10 @@ Was zeigen die Daten an Möglichkeiten — vorsichtig formuliert, keine Garantie
 ## 4. 🎯 5 konkrete Aktionen
 Direkt umsetzbar, basierend auf echten Datenpunkten aus dem Vergleich
 
-## 5. ⚠️ Was die Daten klar zeigen was nicht funktioniert
+## 5. 🔁 Was bei den Top-Videos funktioniert hat und wie man es wiederholt
+Analysiere die besten Videos: Was haben sie gemeinsam? Hook-Typ, Länge, Thema, Format — und wie kann man dieses Muster bewusst wiederholen?
+
+## 6. ⚠️ Was die Daten klar zeigen was nicht funktioniert
 Nur was wirklich aus den Zahlen hervorgeht
 
 Sei direkt, ehrlich und nüchtern. Keine Hype-Sprache."""
@@ -1627,6 +1630,7 @@ def show_app():
             username = st.text_input("TikTok Username", placeholder="z.B. lucasbenner", label_visibility="collapsed")
             if st.button("Account scannen →", type="primary"):
                 if username:
+                    username = username.strip().lower().replace("@", "")
                     # Check token for non-premium
                     if not premium:
                         tokens = get_tokens(user_id)
@@ -1728,6 +1732,10 @@ def show_app():
             selected_accounts = st.session_state.selected_accounts
             suggestions = st.session_state.suggestions
             st.markdown("### Schritt 3: Vollständige Vergleichsanalyse")
+            if st.button("← Neue Analyse starten", key="new_analysis_top"):
+                for k in ["step", "main_data", "suggestions", "selected_accounts"]:
+                    st.session_state.pop(k, None)
+                st.rerun()
             comparison_data = {}
             progress_bar = st.progress(0)
             status_text = st.empty()
