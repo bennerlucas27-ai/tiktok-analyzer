@@ -447,6 +447,7 @@ WICHTIGE REGELN FÜR DIE ANALYSE:
 - Keine forschen Versprechen wie "in 90 Tagen überholen" — bleibe bei beobachtbaren Mustern
 - Wenn etwas unklar ist, sage es direkt
 - Formuliere Potenziale als Möglichkeiten, nicht als Garantien ("könnte", "deutet darauf hin", "zeigt das Muster")
+- KEIN HASHTAG-ANALYSE: Erwähne Hashtags überhaupt nicht — weder in Empfehlungen noch in der Analyse. Das ist kein relevanter Datenpunkt.
 
 Erstelle eine strukturierte Analyse auf Deutsch:
 ## 1. 📊 Positions-Analyse
