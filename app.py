@@ -1266,6 +1266,54 @@ Format: Nummerierte Liste, direkt und actionable. Kein Intro, keine Zusammenfass
             )
 
 
+def seed_verified_accounts():
+    """Füllt die verified_accounts Tabelle mit einer kuratierten Starter-Liste."""
+    try:
+        existing = supabase.table("verified_accounts").select("id").limit(1).execute()
+        if existing.data:
+            return  # Bereits befüllt
+    except:
+        return
+
+    starter_accounts = [
+        # Laufen / Running
+        {"username": "ardasaatci", "nische": "Laufen Fitness Ausdauer", "avg_views": 80000},
+        {"username": "kimgottwald", "nische": "Laufen Running Fitness", "avg_views": 50000},
+        {"username": "running.niik", "nische": "Laufen Running", "avg_views": 5000},
+        {"username": "pamelareif", "nische": "Fitness Sport Laufen", "avg_views": 200000},
+        # Fitness / Sport
+        {"username": "pschindy", "nische": "Fitness Gym Sport", "avg_views": 150000},
+        {"username": "fitnessmitchristoph", "nische": "Fitness Gym Training", "avg_views": 30000},
+        {"username": "juliboehm", "nische": "Fitness Lifestyle Sport", "avg_views": 40000},
+        # Business / Mindset
+        {"username": "timkrasenbrink", "nische": "Business Mindset Unternehmertum", "avg_views": 100000},
+        {"username": "alexanderherber", "nische": "Business Finanzen Mindset", "avg_views": 60000},
+        {"username": "vitorino.official", "nische": "Business Motivation Mindset", "avg_views": 45000},
+        {"username": "finnpilsl", "nische": "Business Finanzen Mindset", "avg_views": 80000},
+        # Comedy / Unterhaltung
+        {"username": "emmveecomedy", "nische": "Comedy Unterhaltung", "avg_views": 300000},
+        {"username": "nicosantos_official", "nische": "Comedy Unterhaltung", "avg_views": 250000},
+        {"username": "levihallo", "nische": "Comedy Unterhaltung Humor", "avg_views": 200000},
+        {"username": "oskarartem", "nische": "Comedy Unterhaltung", "avg_views": 180000},
+        {"username": "henocgeneral", "nische": "Comedy Entertainment Humor", "avg_views": 400000},
+        # Food / Foodspots
+        {"username": "foodspotsberlin", "nische": "Food Foodspots Essen", "avg_views": 50000},
+        {"username": "germantastes", "nische": "Food Essen Deutschland", "avg_views": 30000},
+        {"username": "foodbymaria", "nische": "Food Rezepte Kochen", "avg_views": 40000},
+    ]
+
+    for acc in starter_accounts:
+        try:
+            supabase.table("verified_accounts").upsert({
+                "username": acc["username"],
+                "nische": acc["nische"],
+                "avg_views": acc["avg_views"],
+                "zuletzt_aktiv": datetime.now(timezone.utc).isoformat()
+            }).execute()
+        except:
+            pass
+
+
 # ─── QUICK REFRESH ────────────────────────────────────────────────────────────
 
 def quick_refresh(user_id, username):
@@ -1948,6 +1996,7 @@ def show_app():
 # ─── ROUTER ───────────────────────────────────────────────────────────────────
 
 inject_css()
+seed_verified_accounts()
 
 if "user" not in st.session_state:
     show_auth()
