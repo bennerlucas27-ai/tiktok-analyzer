@@ -449,7 +449,7 @@ def full_comparison_analysis(main_username, main_videos_dict, comparison_account
     main_total_likes = sum(v["likes"] for v in newest)
     main_avg_views = main_total_views // len(newest) if newest else 0
     main_avg_engagement = round((main_total_likes / main_total_views * 100) if main_total_views > 0 else 0, 2)
-    pinned = main_videos.get("pinned", [])
+    pinned = main_videos_dict.get("pinned", [])
     pinned_info = f"\nANGEPINNTE VIDEOS (bewusst prominent platziert): {json.dumps([{'beschreibung': v.get('beschreibung','')[:80], 'views': v.get('views',0), 'link': v.get('webVideoUrl','')} for v in pinned], ensure_ascii=False)}" if pinned else ""
 
     onboarding = st.session_state.get("onboarding", {})
