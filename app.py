@@ -290,11 +290,18 @@ def scrape_tiktok_account(username):
     dataset_id = status_response.json()["data"]["defaultDatasetId"]
     return requests.get(f"https://api.apify.com/v2/datasets/{dataset_id}/items", params=params).json()
 
-def extract_video_data(data):
+def extract_video_data(data, filter_paid=False):
     videos = []
+    pinned_videos = []
     for item in data:
         if "videoMeta" in item or "text" in item:
-            videos.append({
+            is_pinned = item.get("isPinned", False) or item.get("isTop", False)
+            is_paid = item.get("isAd", False) or item.get("adType", None) is not None
+
+            if filter_paid and is_paid:
+                continue
+
+            video = {
                 "beschreibung": item.get("text", ""),
                 "views": item.get("playCount", 0),
                 "likes": item.get("diggCount", 0),
@@ -304,22 +311,34 @@ def extract_video_data(data):
                 "hashtags": [h if isinstance(h, str) else h.get("name", "") for h in item.get("hashtags", [])],
                 "dauer": item.get("videoMeta", {}).get("duration", 0),
                 "watchtime": item.get("videoMeta", {}).get("avgWatchTime", 0),
-            })
+                "id": item.get("id", ""),
+                "webVideoUrl": item.get("webVideoUrl", ""),
+                "isPinned": is_pinned,
+                "isAd": is_paid,
+            }
+
+            if is_pinned:
+                pinned_videos.append(video)
+            else:
+                videos.append(video)
+
     videos.sort(key=lambda x: x["datum"], reverse=True)
     now = datetime.now(timezone.utc)
     last_12_months = []
-    for v in videos:
+    for v in videos + pinned_videos:
         try:
             dt = datetime.fromisoformat(v["datum"].replace("Z", "+00:00"))
             if (now - dt).days <= 365:
                 last_12_months.append(v)
         except:
             pass
+
     return {
-        "newest_30": videos[:30],
+        "newest_30": videos[:50],
+        "pinned": pinned_videos,
         "top_10": sorted(last_12_months, key=lambda x: x["views"], reverse=True)[:10],
-        "bottom_10": sorted(last_12_months, key=lambda x: x["views"])[:10],
-        "all": videos
+        "bottom_10": sorted([v for v in last_12_months if not v.get("isPinned") and not v.get("isAd")], key=lambda x: x["views"])[:10],
+        "all": videos + pinned_videos
     }
 
 def validate_account_exists(username):
@@ -430,24 +449,58 @@ def full_comparison_analysis(main_username, main_videos_dict, comparison_account
     main_total_likes = sum(v["likes"] for v in newest)
     main_avg_views = main_total_views // len(newest) if newest else 0
     main_avg_engagement = round((main_total_likes / main_total_views * 100) if main_total_views > 0 else 0, 2)
+    pinned = main_videos.get("pinned", [])
+    pinned_info = f"\nANGEPINNTE VIDEOS (bewusst prominent platziert): {json.dumps([{'beschreibung': v.get('beschreibung','')[:80], 'views': v.get('views',0), 'link': v.get('webVideoUrl','')} for v in pinned], ensure_ascii=False)}" if pinned else ""
+
+    onboarding = st.session_state.get("onboarding", {})
+    onboarding_context = f"""
+CREATOR KONTEXT:
+- Ziel auf TikTok: {onboarding.get('ziel', 'Nicht angegeben')}
+- Zielgruppe: {onboarding.get('zielgruppe', 'Nicht angegeben')}
+- Erfahrung: {onboarding.get('erfahrung', 'Nicht angegeben')}
+""" if onboarding else ""
+
+    # Add video URLs to top/flop data
+    top_10_with_links = []
+    for v in top_10[:3]:
+        v_data = {"beschreibung": v.get("beschreibung", ""), "views": v.get("views", 0)}
+        if v.get("webVideoUrl"):
+            v_data["link"] = v.get("webVideoUrl")
+        elif v.get("id"):
+            v_data["link"] = f"https://www.tiktok.com/@{main_username}/video/{v.get('id')}"
+        top_10_with_links.append(v_data)
+
+    bottom_10_with_links = []
+    for v in bottom_10[:3]:
+        v_data = {"beschreibung": v.get("beschreibung", ""), "views": v.get("views", 0)}
+        if v.get("webVideoUrl"):
+            v_data["link"] = v.get("webVideoUrl")
+        elif v.get("id"):
+            v_data["link"] = f"https://www.tiktok.com/@{main_username}/video/{v.get('id')}"
+        bottom_10_with_links.append(v_data)
+
     prompt = f"""Du bist ein nüchterner TikTok Analytics Experte. Erstelle eine ehrliche, datenbasierte Vergleichsanalyse für @{main_username} in der Nische: {nische}
 
+{onboarding_context}
+
 HAUPTACCOUNT @{main_username}:
-- Ø Views (letzte 30): {main_avg_views:,}
+- Ø Views (letzte 50): {main_avg_views:,}
 - Engagement Rate: {main_avg_engagement}%
-- TOP 10 Videos: {json.dumps(top_10[:3], ensure_ascii=False)}
-- SCHLECHTESTE 10: {json.dumps(bottom_10[:3], ensure_ascii=False)}
+- TOP Videos (mit Links): {json.dumps(top_10_with_links, ensure_ascii=False)}
+- SCHLECHTESTE Videos (mit Links): {json.dumps(bottom_10_with_links, ensure_ascii=False)}{pinned_info}
 
 VERGLEICHS-ACCOUNTS:
 {json.dumps(comparison_summary, ensure_ascii=False, indent=2)}
 
 WICHTIGE REGELN FÜR DIE ANALYSE:
 - Zeige nur was die Daten wirklich zeigen — keine spekulativen Kausal-Behauptungen
-- Korrelation ist keine Kausalität: Wenn Top-Performer Hashtag X nutzen, schreibe "Top-Performer nutzen X — du nicht" und NICHT "du hättest mit X doppelt so viele Views gehabt"
-- Keine forschen Versprechen wie "in 90 Tagen überholen" — bleibe bei beobachtbaren Mustern
+- RELATIVE BEWERTUNG: Bewerte Views IMMER relativ zum Account-Schnitt ({main_avg_views:,} Ø). "2.9K Views" ist gut oder schlecht je nach Kontext — sag immer "X% über/unter dem Account-Schnitt"
+- Korrelation ist keine Kausalität — formuliere als Muster nicht als Garantie
+- Keine forschen Versprechen — bleibe bei beobachtbaren Mustern
+- VIDEO LINKS: Wenn du ein spezifisches Video erwähnst, füge den Link direkt dahinter ein damit der Creator sofort weiß welches Video gemeint ist
+- KEIN HASHTAG-ANALYSE: Erwähne Hashtags überhaupt nicht
+- Berücksichtige das Ziel und die Zielgruppe des Creators bei allen Empfehlungen
 - Wenn etwas unklar ist, sage es direkt
-- Formuliere Potenziale als Möglichkeiten, nicht als Garantien ("könnte", "deutet darauf hin", "zeigt das Muster")
-- KEIN HASHTAG-ANALYSE: Erwähne Hashtags überhaupt nicht — weder in Empfehlungen noch in der Analyse. Das ist kein relevanter Datenpunkt.
 
 Erstelle eine strukturierte Analyse auf Deutsch:
 ## 1. 📊 Positions-Analyse
@@ -542,7 +595,7 @@ def show_auth():
         </div>
         """, unsafe_allow_html=True)
 
-        tab1, tab2 = st.tabs(["Einloggen", "Registrieren"])
+        tab1, tab2, tab3 = st.tabs(["Einloggen", "Registrieren", "Passwort vergessen"])
         with tab1:
             email = st.text_input("Email", key="login_email", placeholder="deine@email.com")
             password = st.text_input("Passwort", type="password", key="login_password", placeholder="••••••••")
@@ -566,6 +619,18 @@ def show_auth():
                         st.info("📧 Wir haben dir eine Bestätigungs-Email geschickt. Bitte bestätige deine Email bevor du dich einloggst.")
                     else:
                         st.error(f"Fehler: {error}")
+        with tab3:
+            st.markdown('<div style="font-size:13px;color:rgba(232,230,224,0.4);margin-bottom:12px;">Gib deine Email ein — wir schicken dir einen Link zum Passwort zurücksetzen.</div>', unsafe_allow_html=True)
+            reset_email = st.text_input("Email", key="reset_email", placeholder="deine@email.com")
+            if st.button("Link zusenden →", type="primary", use_container_width=True):
+                if reset_email:
+                    try:
+                        supabase.auth.reset_password_email(reset_email)
+                        st.success("✅ Email gesendet! Schau in deinem Postfach nach.")
+                    except Exception as e:
+                        st.error(f"Fehler: {e}")
+                else:
+                    st.warning("Bitte Email eingeben.")
 
         st.markdown("""
         <div style="text-align:center;margin-top:18px;">
@@ -1740,7 +1805,32 @@ def show_app():
         if st.session_state.step == 1:
             st.markdown('<div style="font-size:13px;color:rgba(232,230,224,0.35);margin-bottom:8px;">Analyse basiert auf den letzten 50 Videos.</div>', unsafe_allow_html=True)
             st.markdown('<div style="font-size:11px;color:rgba(255,165,0,0.6);margin-bottom:16px;">⚠️ Bitte analysiere nur Accounts für die du die Berechtigung hast.</div>', unsafe_allow_html=True)
+
             username = st.text_input("TikTok Username", placeholder="z.B. lucasbenner", label_visibility="collapsed")
+
+            st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+            st.markdown('<div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(232,230,224,0.25);margin-bottom:12px;">Kurze Infos für eine bessere Analyse</div>', unsafe_allow_html=True)
+
+            col_a, col_b = st.columns(2)
+            with col_a:
+                ziel = st.selectbox("Was ist dein Ziel auf TikTok?", [
+                    "Follower aufbauen",
+                    "Produkte / Dienstleistungen verkaufen",
+                    "Brand / Bekanntheit aufbauen",
+                    "Geld verdienen (Creator Fund / Sponsoring)",
+                    "Community aufbauen",
+                ], key="onboarding_ziel")
+            with col_b:
+                zielgruppe = st.text_input("Wer ist deine Zielgruppe?", placeholder="z.B. Frauen 18-30, Fitness-Interessierte", key="onboarding_zielgruppe")
+
+            erfahrung = st.selectbox("Wie lange bist du schon auf TikTok aktiv?", [
+                "Weniger als 3 Monate",
+                "3-12 Monate",
+                "1-3 Jahre",
+                "Mehr als 3 Jahre",
+            ], key="onboarding_erfahrung")
+
+            filter_paid = st.toggle("Bezahlte Werbung (Ads) aus der Analyse rausfiltern", value=True, key="filter_paid")
             if st.button("Account scannen →", type="primary"):
                 if username:
                     username = username.strip().lower().replace("@", "")
@@ -1750,11 +1840,29 @@ def show_app():
                         if tokens <= 0 and used_free:
                             st.error("Keine Analysen mehr übrig. Kauf weitere Token.")
                             st.stop()
-                    with st.spinner(f"@{username} wird gescannt..."):
+                    st.markdown("""
+                    <div style="background:rgba(255,165,0,0.06);border:0.5px solid rgba(255,165,0,0.2);
+                                border-radius:8px;padding:12px 16px;margin-bottom:12px;">
+                        <div style="font-size:12px;color:rgba(255,165,0,0.8);font-weight:700;margin-bottom:4px;">
+                            ⏱️ Bitte Tab geöffnet lassen
+                        </div>
+                        <div style="font-size:12px;color:rgba(232,230,224,0.5);line-height:1.6;">
+                            Der Scan dauert <strong style="color:#e8e6e0;">3–5 Minuten</strong>. 
+                            Wechsle nicht in eine andere App — sonst bricht der Scan ab.
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    with st.spinner(f"@{username} wird gescannt — bitte warten und Tab offen lassen..."):
                         data = scrape_tiktok_account(username)
                     if data:
                         st.session_state.main_data = data
                         st.session_state.username = username
+                        st.session_state.onboarding = {
+                            "ziel": ziel,
+                            "zielgruppe": zielgruppe,
+                            "erfahrung": erfahrung,
+                            "filter_paid": filter_paid
+                        }
                         st.session_state.step = 2
                         st.session_state.manual_accounts = [""] * 6
                         st.rerun()
@@ -1845,6 +1953,18 @@ def show_app():
             selected_accounts = st.session_state.selected_accounts
             suggestions = st.session_state.suggestions
             st.markdown("### Schritt 3: Vollständige Vergleichsanalyse")
+            st.markdown("""
+            <div style="background:rgba(255,165,0,0.06);border:0.5px solid rgba(255,165,0,0.2);
+                        border-radius:8px;padding:12px 16px;margin-bottom:16px;">
+                <div style="font-size:12px;color:rgba(255,165,0,0.8);font-weight:700;margin-bottom:4px;">
+                    ⏱️ Bitte Tab geöffnet lassen
+                </div>
+                <div style="font-size:12px;color:rgba(232,230,224,0.5);line-height:1.6;">
+                    Die Vergleichsanalyse dauert <strong style="color:#e8e6e0;">5–10 Minuten</strong> 
+                    je nach Anzahl der Accounts. Wechsle nicht in eine andere App.
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
             if st.button("← Neue Analyse starten", key="new_analysis_top"):
                 for k in ["step", "main_data", "suggestions", "selected_accounts"]:
                     st.session_state.pop(k, None)
@@ -1881,7 +2001,8 @@ def show_app():
                 progress_bar.progress((i + 1) / len(selected_accounts))
 
             status_text.text("KI analysiert alle Daten...")
-            main_videos = extract_video_data(st.session_state.main_data)
+            filter_paid = st.session_state.get("onboarding", {}).get("filter_paid", True)
+            main_videos = extract_video_data(st.session_state.main_data, filter_paid=filter_paid)
             newest = main_videos.get("newest_30", [])
             top_10 = main_videos.get("top_10", [])
             bottom_10 = main_videos.get("bottom_10", [])
