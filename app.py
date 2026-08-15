@@ -1899,7 +1899,7 @@ def show_app():
             col1, col2 = st.columns(2)
             for i in range(6):
                 with col1 if i % 2 == 0 else col2:
-                    st.session_state.manual_accounts[i] = st.text_input(
+                    st.text_input(
                         f"Account {i+1}",
                         value=st.session_state.manual_accounts[i],
                         placeholder="z.B. maxmustermann",
@@ -1927,7 +1927,9 @@ def show_app():
                             if verified:
                                 ki_idx = 0
                                 for i in range(6):
-                                    if not st.session_state.manual_accounts[i] and ki_idx < len(verified):
+                                    current_val = st.session_state.get(f"manual_acc_{i}", "")
+                                    if not current_val and ki_idx < len(verified):
+                                        st.session_state[f"manual_acc_{i}"] = verified[ki_idx]
                                         st.session_state.manual_accounts[i] = verified[ki_idx]
                                         ki_idx += 1
                                 st.success(f"✅ {len(verified)} validierte Accounts für '{nische}' gefunden")
@@ -1944,7 +1946,8 @@ def show_app():
                     st.rerun()
 
             with col_next:
-                selected = [a.strip() for a in st.session_state.manual_accounts if a.strip()]
+                selected = [st.session_state.get(f"manual_acc_{i}", "").strip() for i in range(6)]
+                selected = [a for a in selected if a]
                 if st.button("Vergleich starten →", type="primary", use_container_width=True):
                     if selected:
                         st.session_state.selected_accounts = selected
