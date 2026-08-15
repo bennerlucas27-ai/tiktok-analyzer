@@ -370,10 +370,9 @@ def get_verified_accounts(nische, limit=10):
     """Holt validierte Accounts aus der Community-Liste für eine Nische."""
     try:
         import re as re_module
-        # Sonderzeichen raus, Wörter extrahieren
         words = re_module.sub(r'[&/\-,.]', ' ', nische).split()
         keywords = [w.lower() for w in words if len(w) > 2]
-        
+
         all_accounts = []
         seen = set()
 
@@ -384,13 +383,14 @@ def get_verified_accounts(nische, limit=10):
                     seen.add(r["username"])
                     all_accounts.append(r["username"])
 
-        # Fallback — alle zurückgeben wenn nichts gefunden
+        # Fallback — alle zurückgeben
         if not all_accounts:
             result = supabase.table("verified_accounts").select("username").order("avg_views", desc=True).limit(limit).execute()
             all_accounts = [r["username"] for r in (result.data or [])]
 
         return all_accounts[:limit]
-    except:
+    except Exception as e:
+        st.error(f"get_verified_accounts Fehler: {e}")
         return []
 
 def save_verified_account(username, nische, avg_views):
