@@ -1913,19 +1913,26 @@ def show_app():
 
             with col_ki:
                 if st.button("🤖 KI schlägt Accounts vor", use_container_width=True):
-                    with st.spinner("KI sucht passende Accounts..."):
+                    with st.spinner("Suche validierte Accounts für deine Nische..."):
                         try:
                             suggestions = suggest_comparison_accounts(
                                 st.session_state.main_data, username
                             )
                             st.session_state.suggestions = suggestions
-                            # Nur leere Felder befüllen
-                            ki_accounts = [a["username"] for a in suggestions["accounts"]]
-                            ki_idx = 0
-                            for i in range(6):
-                                if not st.session_state.manual_accounts[i] and ki_idx < len(ki_accounts):
-                                    st.session_state.manual_accounts[i] = ki_accounts[ki_idx]
-                                    ki_idx += 1
+                            nische = suggestions.get("nische", "")
+
+                            # Nur aus verified_accounts Liste holen — keine erfundenen
+                            verified = get_verified_accounts(nische, limit=6)
+
+                            if verified:
+                                ki_idx = 0
+                                for i in range(6):
+                                    if not st.session_state.manual_accounts[i] and ki_idx < len(verified):
+                                        st.session_state.manual_accounts[i] = verified[ki_idx]
+                                        ki_idx += 1
+                                st.success(f"✅ {len(verified)} validierte Accounts für '{nische}' gefunden")
+                            else:
+                                st.warning(f"Noch keine validierten Accounts für '{nische}' in der Datenbank. Bitte manuell eingeben.")
                             st.rerun()
                         except Exception as e:
                             st.error(f"Fehler: {e}")
