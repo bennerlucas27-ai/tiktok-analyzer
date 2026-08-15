@@ -369,8 +369,23 @@ def validate_account_exists(username):
 def get_verified_accounts(nische, limit=10):
     """Holt validierte Accounts aus der Community-Liste für eine Nische."""
     try:
-        result = supabase.table("verified_accounts").select("username, avg_views").ilike("nische", f"%{nische.split()[0]}%").order("avg_views", desc=True).limit(limit).execute()
-        return [r["username"] for r in result.data] if result.data else []
+        keywords = [w for w in nische.lower().split() if len(w) > 3]
+        all_accounts = []
+        seen = set()
+
+        for keyword in keywords[:4]:
+            result = supabase.table("verified_accounts").select("username, avg_views").ilike("nische", f"%{keyword}%").order("avg_views", desc=True).limit(limit).execute()
+            for r in (result.data or []):
+                if r["username"] not in seen:
+                    seen.add(r["username"])
+                    all_accounts.append(r["username"])
+
+        # Fallback — alle zurückgeben wenn nichts gefunden
+        if not all_accounts:
+            result = supabase.table("verified_accounts").select("username").order("avg_views", desc=True).limit(limit).execute()
+            all_accounts = [r["username"] for r in (result.data or [])]
+
+        return all_accounts[:limit]
     except:
         return []
 
