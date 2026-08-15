@@ -1922,9 +1922,10 @@ def show_app():
             col1, col2 = st.columns(2)
             for i in range(6):
                 with col1 if i % 2 == 0 else col2:
+                    val = st.session_state.manual_accounts[i] if i < len(st.session_state.manual_accounts) else ""
                     st.text_input(
                         f"Account {i+1}",
-                        value=st.session_state.manual_accounts[i],
+                        value=val,
                         placeholder="z.B. maxmustermann",
                         key=f"manual_acc_{i}",
                         label_visibility="collapsed"
@@ -1948,14 +1949,10 @@ def show_app():
                             verified = get_verified_accounts(nische, limit=6)
 
                             if verified:
-                                ki_idx = 0
-                                for i in range(6):
-                                    current_val = st.session_state.get(f"manual_acc_{i}", "")
-                                    if not current_val and ki_idx < len(verified):
-                                        st.session_state[f"manual_acc_{i}"] = verified[ki_idx]
-                                        st.session_state.manual_accounts[i] = verified[ki_idx]
-                                        ki_idx += 1
-                                st.success(f"✅ {ki_idx} Accounts vorgeschlagen")
+                                for i, acc in enumerate(verified[:6]):
+                                    st.session_state.manual_accounts[i] = acc
+                                st.success(f"✅ {len(verified[:6])} Accounts vorgeschlagen")
+                                st.rerun()
                             else:
                                 st.warning("Keine Accounts gefunden. Bitte manuell eingeben.")
                             st.rerun()
