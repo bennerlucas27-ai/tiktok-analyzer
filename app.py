@@ -1947,6 +1947,7 @@ def show_app():
 
                             # Nur aus verified_accounts Liste holen — keine erfundenen
                             verified = get_verified_accounts(nische, limit=6)
+                            st.write(f"Debug: Nische='{nische}', Gefunden={verified}")
 
                             if verified:
                                 ki_idx = 0
