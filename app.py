@@ -1353,12 +1353,6 @@ Format: Nummerierte Liste, direkt und actionable. Kein Intro, keine Zusammenfass
 
 def seed_verified_accounts():
     """Füllt die verified_accounts Tabelle mit einer kuratierten Starter-Liste."""
-    try:
-        # Immer alle Starter-Accounts upserten (neue werden hinzugefügt)
-        pass
-    except:
-        return
-
     starter_accounts = [
         # Laufen / Running
         {"username": "ardasaatci", "nische": "Laufen Fitness Ausdauer Running", "avg_views": 80000},
@@ -1389,16 +1383,15 @@ def seed_verified_accounts():
         {"username": "muenchenfoodie", "nische": "Food Foodspots Restaurant Essen", "avg_views": 25000},
         {"username": "berlinfoodies", "nische": "Food Foodspots Berlin Restaurant", "avg_views": 35000},
         # Travel / Reise
-        {"username": "germantravels", "nische": "Travel Reise Deutschland Urlaub", "avg_views": 40000},
+        {"username": "germantravels", "nische": "Travel Reise Deutschland Urlaub Lifestyle", "avg_views": 40000},
         {"username": "weltreisender_de", "nische": "Travel Reise Abenteuer Urlaub", "avg_views": 30000},
         {"username": "reisemitmir", "nische": "Travel Reise Lifestyle Urlaub", "avg_views": 25000},
         {"username": "travelwithjulia", "nische": "Travel Reise Lifestyle Abenteuer", "avg_views": 45000},
         {"username": "backpacking.de", "nische": "Travel Reise Backpacking Abenteuer", "avg_views": 20000},
         # Lifestyle
-        {"username": "dominika_we", "nische": "Lifestyle Content Creator Mode", "avg_views": 50000},
+        {"username": "dominika_we", "nische": "Lifestyle Content Creator Mode Travel", "avg_views": 50000},
         {"username": "stefanieclauss", "nische": "Lifestyle Mode Beauty Fashion", "avg_views": 80000},
     ]
-
     for acc in starter_accounts:
         try:
             supabase.table("verified_accounts").upsert({
