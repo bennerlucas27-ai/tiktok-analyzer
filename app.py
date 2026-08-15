@@ -448,99 +448,206 @@ Antworte NUR in diesem JSON Format:
     return json.loads(text)
 
 def full_comparison_analysis(main_username, main_videos_dict, comparison_accounts_data, nische):
+    import statistics
+
     newest = main_videos_dict.get("newest_30", [])
     top_10 = main_videos_dict.get("top_10", [])
     bottom_10 = main_videos_dict.get("bottom_10", [])
+    pinned = main_videos_dict.get("pinned", [])
+
+    # Median statt Durchschnitt
+    all_views = [v["views"] for v in newest if v.get("views", 0) > 0]
+    main_median_views = int(statistics.median(all_views)) if all_views else 0
+    main_avg_views = sum(all_views) // len(all_views) if all_views else 0
+
+    # Ausreißer erkennen (>5x Median)
+    ausreisser = [v for v in newest if v.get("views", 0) > main_median_views * 5]
+    views_ohne_ausreisser = [v["views"] for v in newest if v.get("views", 0) <= main_median_views * 5]
+    median_ohne_ausreisser = int(statistics.median(views_ohne_ausreisser)) if views_ohne_ausreisser else main_median_views
+
+    # Engagement
+    main_total_likes = sum(v["likes"] for v in newest)
+    main_total_views = sum(v["views"] for v in newest)
+    main_avg_engagement = round((main_total_likes / main_total_views * 100) if main_total_views > 0 else 0, 2)
+
+    # Bucket-Analyse
+    def get_laenge_bucket(dauer):
+        if dauer <= 15: return "0-15s"
+        elif dauer <= 30: return "15-30s"
+        elif dauer <= 60: return "30-60s"
+        else: return "60s+"
+
+    def get_zeit_bucket(datum_str):
+        try:
+            dt = datetime.fromisoformat(datum_str.replace("Z", "+00:00"))
+            h = dt.hour
+            if 5 <= h < 12: return "Morgens"
+            elif 12 <= h < 17: return "Mittags"
+            elif 17 <= h < 22: return "Abends"
+            else: return "Nachts"
+        except: return "Unbekannt"
+
+    def get_wochentag(datum_str):
+        try:
+            dt = datetime.fromisoformat(datum_str.replace("Z", "+00:00"))
+            return ["Mo","Di","Mi","Do","Fr","Sa","So"][dt.weekday()]
+        except: return "?"
+
+    def classify_hook(beschreibung):
+        if not beschreibung: return "Sonstiges"
+        b = beschreibung.lower()
+        if "?" in beschreibung: return "Frage"
+        if any(c.isdigit() for c in beschreibung[:20]): return "Zahl/Statistik"
+        if any(w in b for w in ["mach", "probier", "versuch", "kommentier", "folg", "schau"]): return "Aufforderung"
+        if any(w in b for w in ["ich", "mein", "heute", "gestern", "gerade"]): return "Statement/Story"
+        return "Sonstiges"
+
+    # Ranking-Tabelle aufbauen
+    ranking = []
+    for i, v in enumerate(sorted(newest, key=lambda x: x.get("views", 0), reverse=True)):
+        views = v.get("views", 0)
+        likes = v.get("likes", 0)
+        er = round((likes / views * 100) if views > 0 else 0, 1)
+        ranking.append({
+            "rang": i+1,
+            "views": views,
+            "er": er,
+            "laenge": get_laenge_bucket(v.get("dauer", 0)),
+            "wochentag": get_wochentag(v.get("datum", "")),
+            "zeit": get_zeit_bucket(v.get("datum", "")),
+            "hook": classify_hook(v.get("beschreibung", "")),
+            "link": v.get("webVideoUrl", "") or (f"https://www.tiktok.com/@{main_username}/video/{v.get('id')}" if v.get("id") else ""),
+            "titel": (v.get("beschreibung", "") or "")[:60],
+            "is_ausreisser": v.get("views", 0) > main_median_views * 5,
+            "is_pinned": v.get("isPinned", False),
+        })
+
+    # Bucket-Korrelationen
+    def bucket_analyse(key, videos):
+        buckets = {}
+        for v in videos:
+            val = v.get(key, "?")
+            if val not in buckets: buckets[val] = []
+            buckets[val].append(v.get("views", 0))
+        result = {}
+        for k, views_list in buckets.items():
+            if len(views_list) >= 3:
+                result[k] = {"median": int(statistics.median(views_list)), "count": len(views_list)}
+        return result
+
+    laenge_buckets = {}
+    zeit_buckets = {}
+    hook_buckets = {}
+    for v in newest:
+        lb = get_laenge_bucket(v.get("dauer", 0))
+        zb = get_zeit_bucket(v.get("datum", ""))
+        hb = classify_hook(v.get("beschreibung", ""))
+        laenge_buckets.setdefault(lb, []).append(v.get("views", 0))
+        zeit_buckets.setdefault(zb, []).append(v.get("views", 0))
+        hook_buckets.setdefault(hb, []).append(v.get("views", 0))
+
+    def format_buckets(d):
+        return {k: {"median": int(statistics.median(v)), "count": len(v), "ausreichend": len(v) >= 5} for k, v in d.items()}
+
+    # Vergleichs-Accounts
+    onboarding = st.session_state.get("onboarding", {})
+    follower_range = onboarding.get("follower_range", "Unbekannt")
+
     comparison_summary = {}
     for uname, vdict in comparison_accounts_data.items():
         videos = vdict.get("newest_30", []) if isinstance(vdict, dict) else vdict
         if videos:
             total_views = sum(v["views"] for v in videos)
             total_likes = sum(v["likes"] for v in videos)
-            avg_views = total_views // len(videos)
+            acc_views = [v["views"] for v in videos if v.get("views", 0) > 0]
             comparison_summary[uname] = {
-                "avg_views": avg_views,
+                "median_views": int(statistics.median(acc_views)) if acc_views else 0,
                 "avg_engagement": round((total_likes / total_views * 100) if total_views > 0 else 0, 2),
-                "avg_duration": round(sum(v["dauer"] for v in videos) / len(videos), 1),
+                "avg_duration": round(sum(v.get("dauer", 0) for v in videos) / len(videos), 1),
             }
-    main_total_views = sum(v["views"] for v in newest)
-    main_total_likes = sum(v["likes"] for v in newest)
-    main_avg_views = main_total_views // len(newest) if newest else 0
-    main_avg_engagement = round((main_total_likes / main_total_views * 100) if main_total_views > 0 else 0, 2)
-    pinned = main_videos_dict.get("pinned", [])
-    pinned_info = f"\nANGEPINNTE VIDEOS (bewusst prominent platziert): {json.dumps([{'beschreibung': v.get('beschreibung','')[:80], 'views': v.get('views',0), 'link': v.get('webVideoUrl','')} for v in pinned], ensure_ascii=False)}" if pinned else ""
 
-    onboarding = st.session_state.get("onboarding", {})
-    onboarding_context = f"""
+    pinned_info = ""
+    if pinned:
+        pinned_info = f"\nANGEPINNTE VIDEOS: {json.dumps([{'titel': (v.get('beschreibung','') or '')[:60], 'views': v.get('views',0), 'link': v.get('webVideoUrl','')} for v in pinned], ensure_ascii=False)}"
+
+    # CSV Creator Portal Daten
+    csv_data = st.session_state.get("tiktok_csv_data", [])
+    csv_context = ""
+    if csv_data:
+        # Relevante Spalten extrahieren
+        csv_summary = []
+        for row in csv_data[:50]:
+            entry = {}
+            for key in ["video_caption", "posted_date", "video_views", "average_watch_time", "watched_full_video_rate", "traffic_source", "total_time_watched", "new_followers"]:
+                if key in row:
+                    entry[key] = row[key]
+            if entry:
+                csv_summary.append(entry)
+        if csv_summary:
+            csv_context = f"\n\nCREATOR PORTAL DATEN (aus TikTok Studio CSV):\n{json.dumps(csv_summary[:20], ensure_ascii=False)}\n\nMit diesen Daten kannst du Watch-Time, Completion Rate und Traffic-Quelle analysieren."
+
+    prompt = f"""Du bist ein datengetriebener TikTok-Content-Analyst. Erstelle eine ehrliche, strukturierte Analyse für @{main_username}.{csv_context}
+
 CREATOR KONTEXT:
-- Ziel auf TikTok: {onboarding.get('ziel', 'Nicht angegeben')}
+- Nische: {nische}
+- Ziel: {onboarding.get('ziel', 'Nicht angegeben')}
 - Zielgruppe: {onboarding.get('zielgruppe', 'Nicht angegeben')}
 - Erfahrung: {onboarding.get('erfahrung', 'Nicht angegeben')}
-""" if onboarding else ""
+- Follower-Range für Vergleich: {follower_range}
 
-    # Add video URLs to top/flop data
-    top_10_with_links = []
-    for v in top_10[:3]:
-        v_data = {"beschreibung": v.get("beschreibung", ""), "views": v.get("views", 0)}
-        if v.get("webVideoUrl"):
-            v_data["link"] = v.get("webVideoUrl")
-        elif v.get("id"):
-            v_data["link"] = f"https://www.tiktok.com/@{main_username}/video/{v.get('id')}"
-        top_10_with_links.append(v_data)
-
-    bottom_10_with_links = []
-    for v in bottom_10[:3]:
-        v_data = {"beschreibung": v.get("beschreibung", ""), "views": v.get("views", 0)}
-        if v.get("webVideoUrl"):
-            v_data["link"] = v.get("webVideoUrl")
-        elif v.get("id"):
-            v_data["link"] = f"https://www.tiktok.com/@{main_username}/video/{v.get('id')}"
-        bottom_10_with_links.append(v_data)
-
-    prompt = f"""Du bist ein nüchterner TikTok Analytics Experte. Erstelle eine ehrliche, datenbasierte Vergleichsanalyse für @{main_username} in der Nische: {nische}
-
-{onboarding_context}
-
-HAUPTACCOUNT @{main_username}:
-- Ø Views (letzte 50): {main_avg_views:,}
+ACCOUNT DATEN (@{main_username}):
+- Median Views (alle 50 Videos): {main_median_views:,}
+- Median Views (ohne Ausreißer): {median_ohne_ausreisser:,}
+- Ø Views: {main_avg_views:,}
 - Engagement Rate: {main_avg_engagement}%
-- TOP Videos (mit Links): {json.dumps(top_10_with_links, ensure_ascii=False)}
-- SCHLECHTESTE Videos (mit Links): {json.dumps(bottom_10_with_links, ensure_ascii=False)}{pinned_info}
+- Ausreißer (>5x Median): {len(ausreisser)} Videos
+{pinned_info}
 
-VERGLEICHS-ACCOUNTS:
+RANKING ALLE VIDEOS (Top 10 nach Views):
+{json.dumps(ranking[:10], ensure_ascii=False)}
+
+BUCKET-KORRELATIONEN (nur Buckets mit min. 3 Videos):
+Videolänge: {json.dumps(format_buckets(laenge_buckets), ensure_ascii=False)}
+Posting-Zeit: {json.dumps(format_buckets(zeit_buckets), ensure_ascii=False)}
+Hook-Typ: {json.dumps(format_buckets(hook_buckets), ensure_ascii=False)}
+
+VERGLEICHS-ACCOUNTS (ähnliche Range):
 {json.dumps(comparison_summary, ensure_ascii=False, indent=2)}
 
-WICHTIGE REGELN FÜR DIE ANALYSE:
-- Zeige nur was die Daten wirklich zeigen — keine spekulativen Kausal-Behauptungen
-- RELATIVE BEWERTUNG: Bewerte Views IMMER relativ zum Account-Schnitt ({main_avg_views:,} Ø). "2.9K Views" ist gut oder schlecht je nach Kontext — sag immer "X% über/unter dem Account-Schnitt"
-- Korrelation ist keine Kausalität — formuliere als Muster nicht als Garantie
-- Keine forschen Versprechen — bleibe bei beobachtbaren Mustern
-- VIDEO LINKS: Wenn du ein spezifisches Video erwähnst, füge den Link direkt dahinter ein damit der Creator sofort weiß welches Video gemeint ist
-- KEIN HASHTAG-ANALYSE: Erwähne Hashtags überhaupt nicht
-- Berücksichtige das Ziel und die Zielgruppe des Creators bei allen Empfehlungen
-- Wenn etwas unklar ist, sage es direkt
+WICHTIGSTE REGELN:
+- Verwende IMMER den Median als Referenz, nicht den Durchschnitt
+- Markiere Ausreißer explizit und zeige Baseline mit und ohne
+- Vergleiche nur mit Accounts in ähnlicher Follower-Range — keine 1Mio+ Accounts als Benchmark
+- Bei Buckets mit <5 Videos: explizit sagen "nicht genug Daten"
+- KEINE Hashtag-Empfehlungen
+- Jede Handlungsempfehlung muss direkt aus den Bucket-Daten abgeleitet sein
+- Links zu Videos immer mitangeben wenn verfügbar
+- Ton: nüchtern, konkret, keine Superlative außer bei >3x Abweichung
 
-Erstelle eine strukturierte Analyse auf Deutsch:
-## 1. 📊 Positions-Analyse
-Wo steht der Account wirklich im Vergleich — nüchtern und ehrlich, inkl. Hinweis auf Ausreißer die den Schnitt verzerren
+Erstelle die Analyse in dieser Struktur auf Deutsch:
 
-## 2. 🏆 Was Top-Performer anders machen
-Konkrete beobachtbare Unterschiede in Hashtags, Format, Länge, Posting-Verhalten — als Muster, nicht als Kausalität
+## 1. 📊 Bereinigte Baseline
+Median mit und ohne Ausreißer. Klare Referenzzahl für alles weitere.
 
-## 3. 📈 Muster und Chancen
-Was zeigen die Daten an Möglichkeiten — vorsichtig formuliert, keine Garantien
+## 2. 📋 Ranking-Tabelle (Top 10)
+Tabelle mit: Rang | Views | ER% | Länge | Zeit | Hook-Typ | Link
 
-## 4. 🎯 5 konkrete Aktionen
-Direkt umsetzbar, basierend auf echten Datenpunkten aus dem Vergleich
+## 3. 🔍 Bucket-Korrelationen
+Performance nach Länge, Posting-Zeit und Hook-Typ. Nur Buckets mit ausreichend Daten. Bei zu wenig Daten: ehrlich sagen.
 
-## 5. 🔁 Was bei den Top-Videos funktioniert hat und wie man es wiederholt
-Analysiere die besten Videos: Was haben sie gemeinsam? Hook-Typ, Länge, Thema, Format — und wie kann man dieses Muster bewusst wiederholen?
+## 4. ⚖️ Beeinflussbar vs. Algorithmus
+Zwei getrennte Listen — was der Creator kontrollieren kann und was nicht.
 
-## 6. ⚠️ Was die Daten klar zeigen was nicht funktioniert
-Nur was wirklich aus den Zahlen hervorgeht
+## 5. 👥 Peer-Vergleich
+Nur mit Accounts in ähnlicher Range. Falls keine passenden: das explizit sagen.
 
-Sei direkt, ehrlich und nüchtern. Keine Hype-Sprache."""
-    message = client.messages.create(model="claude-sonnet-4-6", max_tokens=4000, messages=[{"role": "user", "content": prompt}])
+## 6. 🎯 3 testbare Handlungsempfehlungen
+Jede mit: konkretem Bucket-Bezug + Testkriterium ("poste 5 Videos in Bucket X") + als Hypothese markiert wenn <10 Datenpunkte.
+
+## 7. 🔍 Transparenz
+Anzahl Videos analysiert, fehlende Variablen (Retention, Thumbnail etc.), Hinweis dass Muster keine Garantie sind."""
+
+    message = client.messages.create(model="claude-sonnet-4-6", max_tokens=6000, messages=[{"role": "user", "content": prompt}])
     return message.content[0].text, main_avg_views, main_avg_engagement
 
 def save_analysis(user_id, username, nische, avg_views, engagement_rate, comparison_accounts, analysis_text, video_dates=None):
@@ -1844,7 +1951,14 @@ def show_app():
                     "Community aufbauen",
                 ], key="onboarding_ziel")
             with col_b:
-                zielgruppe = st.text_input("Wer ist deine Zielgruppe?", placeholder="z.B. Frauen 18-30, Fitness-Interessierte", key="onboarding_zielgruppe")
+                follower_range = st.selectbox("Wie viele Follower hast du?", [
+                    "0 - 1.000",
+                    "1.000 - 10.000",
+                    "10.000 - 50.000",
+                    "50.000+",
+                ], key="onboarding_follower_range")
+
+            zielgruppe = st.text_input("Wer ist deine Zielgruppe?", placeholder="z.B. Frauen 18-30, Fitness-Interessierte", key="onboarding_zielgruppe")
 
             erfahrung = st.selectbox("Wie lange bist du schon auf TikTok aktiv?", [
                 "Weniger als 3 Monate",
@@ -1854,6 +1968,21 @@ def show_app():
             ], key="onboarding_erfahrung")
 
             filter_paid = st.toggle("Bezahlte Werbung (Ads) aus der Analyse rausfiltern", value=True, key="filter_paid")
+
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background:rgba(29,158,117,0.05);border:0.5px solid rgba(29,158,117,0.2);
+                        border-radius:8px;padding:12px 16px;margin-bottom:8px;">
+                <div style="font-size:11px;font-weight:700;color:rgba(29,158,117,0.8);margin-bottom:4px;">
+                    📊 Optional: TikTok Studio CSV für tiefere Analyse
+                </div>
+                <div style="font-size:11px;color:rgba(232,230,224,0.4);line-height:1.6;">
+                    Exportiere deine Daten aus TikTok Studio → Analytics → Export (Desktop) 
+                    und lade die CSV hier hoch. Dann bekommst du Watch-Time, Completion Rate und Traffic-Quelle.
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            csv_file = st.file_uploader("TikTok Studio CSV (optional)", type=["csv", "xlsx"], key="tiktok_csv", label_visibility="collapsed")
             if st.button("Account scannen →", type="primary"):
                 if username:
                     username = username.strip().lower().replace("@", "")
@@ -1884,8 +2013,21 @@ def show_app():
                             "ziel": ziel,
                             "zielgruppe": zielgruppe,
                             "erfahrung": erfahrung,
+                            "follower_range": follower_range,
                             "filter_paid": filter_paid
                         }
+
+                        # CSV parsen wenn hochgeladen
+                        if csv_file:
+                            try:
+                                if csv_file.name.endswith(".xlsx"):
+                                    df = pd.read_excel(csv_file)
+                                else:
+                                    df = pd.read_csv(csv_file)
+                                df.columns = [c.lower().strip().replace(" ", "_") for c in df.columns]
+                                st.session_state["tiktok_csv_data"] = df.to_dict(orient="records")
+                            except Exception as e:
+                                st.warning(f"CSV konnte nicht gelesen werden: {e}")
                         st.session_state.step = 2
                         st.session_state.manual_accounts = [""] * 6
                         st.rerun()
