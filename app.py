@@ -1968,21 +1968,6 @@ def show_app():
             ], key="onboarding_erfahrung")
 
             filter_paid = st.toggle("Bezahlte Werbung (Ads) aus der Analyse rausfiltern", value=True, key="filter_paid")
-
-            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-            st.markdown("""
-            <div style="background:rgba(29,158,117,0.05);border:0.5px solid rgba(29,158,117,0.2);
-                        border-radius:8px;padding:12px 16px;margin-bottom:8px;">
-                <div style="font-size:11px;font-weight:700;color:rgba(29,158,117,0.8);margin-bottom:4px;">
-                    📊 Optional: TikTok Studio CSV für tiefere Analyse
-                </div>
-                <div style="font-size:11px;color:rgba(232,230,224,0.4);line-height:1.6;">
-                    Exportiere deine Daten aus TikTok Studio → Analytics → Export (Desktop) 
-                    und lade die CSV hier hoch. Dann bekommst du Watch-Time, Completion Rate und Traffic-Quelle.
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-            csv_file = st.file_uploader("TikTok Studio CSV (optional)", type=["csv", "xlsx"], key="tiktok_csv", label_visibility="collapsed")
             if st.button("Account scannen →", type="primary"):
                 if username:
                     username = username.strip().lower().replace("@", "")
@@ -2016,23 +2001,51 @@ def show_app():
                             "follower_range": follower_range,
                             "filter_paid": filter_paid
                         }
-
-                        # CSV parsen wenn hochgeladen
-                        if csv_file:
-                            try:
-                                if csv_file.name.endswith(".xlsx"):
-                                    df = pd.read_excel(csv_file)
-                                else:
-                                    df = pd.read_csv(csv_file)
-                                df.columns = [c.lower().strip().replace(" ", "_") for c in df.columns]
-                                st.session_state["tiktok_csv_data"] = df.to_dict(orient="records")
-                            except Exception as e:
-                                st.warning(f"CSV konnte nicht gelesen werden: {e}")
-                        st.session_state.step = 2
+                        st.session_state.step = 1.5
                         st.session_state.manual_accounts = [""] * 6
                         st.rerun()
                     else:
                         st.error("Account nicht gefunden oder privat.")
+
+        elif st.session_state.step == 1.5:
+            username = st.session_state.username
+            st.markdown("### Optional: TikTok Studio Daten hochladen")
+            st.markdown("""
+            <div style="background:rgba(29,158,117,0.05);border:0.5px solid rgba(29,158,117,0.2);
+                        border-radius:8px;padding:14px 16px;margin-bottom:16px;">
+                <div style="font-size:12px;font-weight:700;color:rgba(29,158,117,0.8);margin-bottom:6px;">
+                    📊 Watch-Time & Traffic-Quelle hinzufügen
+                </div>
+                <div style="font-size:12px;color:rgba(232,230,224,0.4);line-height:1.7;">
+                    Öffne <strong style="color:#e8e6e0;">studio.tiktok.com</strong> auf dem PC →
+                    Analytics → Export → CSV/Excel downloaden und hier hochladen.<br>
+                    Damit bekommst du Watch-Time, Completion Rate und Traffic-Quelle in der Analyse.
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            csv_file = st.file_uploader("TikTok Studio Export (CSV oder Excel)", type=["csv", "xlsx"], key="tiktok_csv")
+
+            col_skip, col_next = st.columns([1, 2])
+            with col_skip:
+                if st.button("Überspringen →", use_container_width=True):
+                    st.session_state.step = 2
+                    st.rerun()
+            with col_next:
+                if csv_file:
+                    if st.button("Datei hochladen & weiter →", type="primary", use_container_width=True):
+                        try:
+                            if csv_file.name.endswith(".xlsx"):
+                                df = pd.read_excel(csv_file)
+                            else:
+                                df = pd.read_csv(csv_file)
+                            df.columns = [c.lower().strip().replace(" ", "_") for c in df.columns]
+                            st.session_state["tiktok_csv_data"] = df.to_dict(orient="records")
+                            st.success(f"✅ {len(df)} Videos geladen")
+                            st.session_state.step = 2
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Fehler: {e}")
 
         elif st.session_state.step == 2:
             username = st.session_state.username
@@ -2290,7 +2303,7 @@ def show_app():
 # ─── ROUTER ───────────────────────────────────────────────────────────────────
 
 inject_css()
-seed_verified_accounts()
+# seed_verified_accounts()  # Deaktiviert — Tabelle bereits befüllt
 
 if "user" not in st.session_state:
     show_auth()
