@@ -620,7 +620,11 @@ WICHTIGSTE REGELN:
 - Vergleiche nur mit Accounts in ähnlicher Follower-Range — keine 1Mio+ Accounts als Benchmark
 - Bei Buckets mit <5 Videos: explizit sagen "nicht genug Daten"
 - KEINE Hashtag-Empfehlungen
-- Jede Handlungsempfehlung muss direkt aus den Bucket-Daten abgeleitet sein
+- KEINE Posting-Frequenz unter "beeinflussbar" listen wenn sie nicht gemessen wurde
+- Wenn 43/50 Videos in einem Bucket sind: KEINE Bucket-Empfehlung — stattdessen als Handlungsanweisung: "Um X zu testen, produziere bewusst Y Videos in anderen Buckets"
+- Hook-Klassifizierung IMMER mit Hinweis: "automatisiert und fehleranfällig". "Sonstiges" als größte Gruppe = Klassifizierung zu grob, das explizit ansprechen
+- Datenpunkt-Konsistenz: wenn Bucket-Zählung und vollständige Datensätze unterschiedlich sind, erkläre die Diskrepanz
+- Einzelvideo-Beobachtungen NICHT gleichwertig zu Bucket-Empfehlungen behandeln — eigene Kategorie verwenden
 - Links zu Videos immer mitangeben wenn verfügbar
 - Ton: nüchtern, konkret, keine Superlative außer bei >3x Abweichung
 
@@ -633,10 +637,22 @@ Median mit und ohne Ausreißer. Klare Referenzzahl für alles weitere.
 Tabelle mit: Rang | Views | ER% | Länge | Zeit | Hook-Typ | Link
 
 ## 3. 🔍 Bucket-Korrelationen
-Performance nach Länge, Posting-Zeit und Hook-Typ. Nur Buckets mit ausreichend Daten. Bei zu wenig Daten: ehrlich sagen.
+Performance nach Länge, Posting-Zeit und Hook-Typ. Nur Buckets mit ausreichend Daten. Bei zu wenig Daten: ehrlich sagen. Wenn eine Variable keine Varianz hat (alle Videos in einem Bucket): als "nicht testbar, erst Varianz herstellen" markieren und konkret sagen wie.
 
 ## 4. ⚖️ Beeinflussbar vs. Algorithmus
-Zwei getrennte Listen — was der Creator kontrollieren kann und was nicht.
+Zwei getrennte Listen — nur Faktoren die in den Daten tatsächlich gemessen wurden unter "beeinflussbar" listen.
+
+## 5. 👥 Peer-Vergleich
+Nur mit Accounts in ähnlicher Range. Falls keine: explizit sagen.
+
+## 6. 🎯 Bucket-Empfehlungen (aus echten Mustern)
+Nur Empfehlungen die direkt aus Bucket-Daten kommen. Jede mit konkretem Testkriterium.
+
+## 7. 🔎 Einzelbeobachtungen (noch keine Bucket-Bestätigung)
+Auffälligkeiten aus einzelnen Videos die noch nicht durch Bucket-Analyse bestätigt sind — klar als unsicher markiert.
+
+## 8. 🔍 Transparenz
+Anzahl Videos, fehlende Variablen, Hinweis dass Muster keine Garantie sind. Erkläre Diskrepanzen in den Datenpunkten.
 
 ## 5. 👥 Peer-Vergleich
 Nur mit Accounts in ähnlicher Range. Falls keine passenden: das explizit sagen.
