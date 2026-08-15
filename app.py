@@ -1350,37 +1350,49 @@ Format: Nummerierte Liste, direkt und actionable. Kein Intro, keine Zusammenfass
 def seed_verified_accounts():
     """Füllt die verified_accounts Tabelle mit einer kuratierten Starter-Liste."""
     try:
-        existing = supabase.table("verified_accounts").select("id").limit(1).execute()
-        if existing.data:
-            return  # Bereits befüllt
+        # Immer alle Starter-Accounts upserten (neue werden hinzugefügt)
+        pass
     except:
         return
 
     starter_accounts = [
         # Laufen / Running
-        {"username": "ardasaatci", "nische": "Laufen Fitness Ausdauer", "avg_views": 80000},
-        {"username": "kimgottwald", "nische": "Laufen Running Fitness", "avg_views": 50000},
-        {"username": "running.niik", "nische": "Laufen Running", "avg_views": 5000},
-        {"username": "pamelareif", "nische": "Fitness Sport Laufen", "avg_views": 200000},
+        {"username": "ardasaatci", "nische": "Laufen Fitness Ausdauer Running", "avg_views": 80000},
+        {"username": "kimgottwald", "nische": "Laufen Running Fitness Sport", "avg_views": 50000},
+        {"username": "running.niik", "nische": "Laufen Running Sport", "avg_views": 5000},
+        {"username": "pamelareif", "nische": "Fitness Sport Laufen Lifestyle", "avg_views": 200000},
         # Fitness / Sport
-        {"username": "pschindy", "nische": "Fitness Gym Sport", "avg_views": 150000},
-        {"username": "fitnessmitchristoph", "nische": "Fitness Gym Training", "avg_views": 30000},
-        {"username": "juliboehm", "nische": "Fitness Lifestyle Sport", "avg_views": 40000},
+        {"username": "pschindy", "nische": "Fitness Gym Sport Training", "avg_views": 150000},
+        {"username": "fitnessmitchristoph", "nische": "Fitness Gym Training Sport", "avg_views": 30000},
+        {"username": "juliboehm", "nische": "Fitness Lifestyle Sport Gym", "avg_views": 40000},
+        {"username": "laurencohan", "nische": "Fitness Workout Training", "avg_views": 60000},
         # Business / Mindset
-        {"username": "timkrasenbrink", "nische": "Business Mindset Unternehmertum", "avg_views": 100000},
-        {"username": "alexanderherber", "nische": "Business Finanzen Mindset", "avg_views": 60000},
-        {"username": "vitorino.official", "nische": "Business Motivation Mindset", "avg_views": 45000},
-        {"username": "finnpilsl", "nische": "Business Finanzen Mindset", "avg_views": 80000},
+        {"username": "timkrasenbrink", "nische": "Business Mindset Unternehmertum Motivation", "avg_views": 100000},
+        {"username": "alexanderherber", "nische": "Business Finanzen Mindset Motivation", "avg_views": 60000},
+        {"username": "vitorino.official", "nische": "Business Motivation Mindset Erfolg", "avg_views": 45000},
+        {"username": "finnpilsl", "nische": "Business Finanzen Mindset Investieren", "avg_views": 80000},
+        {"username": "lionel.sander", "nische": "Business Mindset Unternehmertum", "avg_views": 35000},
         # Comedy / Unterhaltung
-        {"username": "emmveecomedy", "nische": "Comedy Unterhaltung", "avg_views": 300000},
-        {"username": "nicosantos_official", "nische": "Comedy Unterhaltung", "avg_views": 250000},
-        {"username": "levihallo", "nische": "Comedy Unterhaltung Humor", "avg_views": 200000},
-        {"username": "oskarartem", "nische": "Comedy Unterhaltung", "avg_views": 180000},
-        {"username": "henocgeneral", "nische": "Comedy Entertainment Humor", "avg_views": 400000},
+        {"username": "emmveecomedy", "nische": "Comedy Unterhaltung Humor Videos", "avg_views": 300000},
+        {"username": "nicosantos_official", "nische": "Comedy Unterhaltung Humor", "avg_views": 250000},
+        {"username": "levihallo", "nische": "Comedy Unterhaltung Humor Spaß", "avg_views": 200000},
+        {"username": "oskarartem", "nische": "Comedy Unterhaltung Entertainment", "avg_views": 180000},
+        {"username": "henocgeneral", "nische": "Comedy Entertainment Humor Unterhaltung", "avg_views": 400000},
         # Food / Foodspots
-        {"username": "foodspotsberlin", "nische": "Food Foodspots Essen", "avg_views": 50000},
-        {"username": "germantastes", "nische": "Food Essen Deutschland", "avg_views": 30000},
-        {"username": "foodbymaria", "nische": "Food Rezepte Kochen", "avg_views": 40000},
+        {"username": "foodspotsberlin", "nische": "Food Foodspots Essen Restaurant", "avg_views": 50000},
+        {"username": "germantastes", "nische": "Food Essen Deutschland Foodspots", "avg_views": 30000},
+        {"username": "foodbymaria", "nische": "Food Rezepte Kochen Essen", "avg_views": 40000},
+        {"username": "muenchenfoodie", "nische": "Food Foodspots Restaurant Essen", "avg_views": 25000},
+        {"username": "berlinfoodies", "nische": "Food Foodspots Berlin Restaurant", "avg_views": 35000},
+        # Travel / Reise
+        {"username": "germantravels", "nische": "Travel Reise Deutschland Urlaub", "avg_views": 40000},
+        {"username": "weltreisender_de", "nische": "Travel Reise Abenteuer Urlaub", "avg_views": 30000},
+        {"username": "reisemitmir", "nische": "Travel Reise Lifestyle Urlaub", "avg_views": 25000},
+        {"username": "travelwithjulia", "nische": "Travel Reise Lifestyle Abenteuer", "avg_views": 45000},
+        {"username": "backpacking.de", "nische": "Travel Reise Backpacking Abenteuer", "avg_views": 20000},
+        # Lifestyle
+        {"username": "dominika_we", "nische": "Lifestyle Content Creator Mode", "avg_views": 50000},
+        {"username": "stefanieclauss", "nische": "Lifestyle Mode Beauty Fashion", "avg_views": 80000},
     ]
 
     for acc in starter_accounts:
