@@ -369,11 +369,15 @@ def validate_account_exists(username):
 def get_verified_accounts(nische, limit=10):
     """Holt validierte Accounts aus der Community-Liste für eine Nische."""
     try:
-        keywords = [w for w in nische.lower().split() if len(w) > 3]
+        import re as re_module
+        # Sonderzeichen raus, Wörter extrahieren
+        words = re_module.sub(r'[&/\-,.]', ' ', nische).split()
+        keywords = [w.lower() for w in words if len(w) > 2]
+        
         all_accounts = []
         seen = set()
 
-        for keyword in keywords[:4]:
+        for keyword in keywords[:5]:
             result = supabase.table("verified_accounts").select("username, avg_views").ilike("nische", f"%{keyword}%").order("avg_views", desc=True).limit(limit).execute()
             for r in (result.data or []):
                 if r["username"] not in seen:
