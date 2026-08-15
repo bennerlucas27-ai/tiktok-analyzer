@@ -390,7 +390,6 @@ def get_verified_accounts(nische, limit=10):
 
         return all_accounts[:limit]
     except Exception as e:
-        st.error(f"get_verified_accounts Fehler: {e}")
         return []
 
 def save_verified_account(username, nische, avg_views):
@@ -1947,7 +1946,6 @@ def show_app():
 
                             # Nur aus verified_accounts Liste holen — keine erfundenen
                             verified = get_verified_accounts(nische, limit=6)
-                            st.write(f"Debug: Nische='{nische}', Gefunden={verified}")
 
                             if verified:
                                 ki_idx = 0
