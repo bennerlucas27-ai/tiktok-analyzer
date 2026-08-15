@@ -1963,9 +1963,9 @@ def show_app():
                                         st.session_state[f"manual_acc_{i}"] = verified[ki_idx]
                                         st.session_state.manual_accounts[i] = verified[ki_idx]
                                         ki_idx += 1
-                                st.success(f"✅ {len(verified)} validierte Accounts für '{nische}' gefunden")
+                                st.success(f"✅ {ki_idx} Accounts vorgeschlagen")
                             else:
-                                st.warning(f"Noch keine validierten Accounts für '{nische}' in der Datenbank. Bitte manuell eingeben.")
+                                st.warning("Keine Accounts gefunden. Bitte manuell eingeben.")
                             st.rerun()
                         except Exception as e:
                             st.error(f"Fehler: {e}")
