@@ -6,6 +6,7 @@ import json
 import time
 import re
 import random
+import base64
 import pandas as pd
 from datetime import datetime, timezone
 from dotenv import load_dotenv
@@ -314,6 +315,7 @@ def extract_video_data(data, filter_paid=False):
                 "likes": item.get("diggCount", 0),
                 "comments": item.get("commentCount", 0),
                 "shares": item.get("shareCount", 0),
+                "saves": item.get("collectCount", 0),
                 "datum": item.get("createTimeISO", ""),
                 "hashtags": [h if isinstance(h, str) else h.get("name", "") for h in item.get("hashtags", [])],
                 "dauer": item.get("videoMeta", {}).get("duration", 0),
@@ -472,12 +474,15 @@ def full_comparison_analysis(main_username, main_videos_dict, comparison_account
     views_ohne_ausreisser = [v["views"] for v in newest if v.get("views", 0) <= main_median_views * 5]
     median_ohne_ausreisser = int(statistics.median(views_ohne_ausreisser)) if views_ohne_ausreisser else main_median_views
 
+    # Größter Ausreißer für Deep-Dive
+    groesster_ausreisser = max(newest, key=lambda v: v.get("views", 0)) if newest else None
+
     # Engagement
     main_total_likes = sum(v["likes"] for v in newest)
     main_total_views = sum(v["views"] for v in newest)
     main_avg_engagement = round((main_total_likes / main_total_views * 100) if main_total_views > 0 else 0, 2)
 
-    # Bucket-Analyse
+    # Bucket-Analyse (nachrangig — Feintuning, keine Strategie)
     def get_laenge_bucket(dauer):
         if dauer <= 15: return "0-15s"
         elif dauer <= 30: return "15-30s"
@@ -500,16 +505,7 @@ def full_comparison_analysis(main_username, main_videos_dict, comparison_account
             return ["Mo","Di","Mi","Do","Fr","Sa","So"][dt.weekday()]
         except: return "?"
 
-    def classify_hook(beschreibung):
-        if not beschreibung: return "Sonstiges"
-        b = beschreibung.lower()
-        if "?" in beschreibung: return "Frage"
-        if any(c.isdigit() for c in beschreibung[:20]): return "Zahl/Statistik"
-        if any(w in b for w in ["mach", "probier", "versuch", "kommentier", "folg", "schau"]): return "Aufforderung"
-        if any(w in b for w in ["ich", "mein", "heute", "gestern", "gerade"]): return "Statement/Story"
-        return "Sonstiges"
-
-    # Ranking-Tabelle aufbauen
+    # Ranking-Tabelle aufbauen (ohne Hook-Typ — Content-Cluster übernimmt die KI direkt aus den Rohdaten)
     ranking = []
     for i, v in enumerate(sorted(newest, key=lambda x: x.get("views", 0), reverse=True)):
         views = v.get("views", 0)
@@ -522,36 +518,33 @@ def full_comparison_analysis(main_username, main_videos_dict, comparison_account
             "laenge": get_laenge_bucket(v.get("dauer", 0)),
             "wochentag": get_wochentag(v.get("datum", "")),
             "zeit": get_zeit_bucket(v.get("datum", "")),
-            "hook": classify_hook(v.get("beschreibung", "")),
+            "beschreibung": (v.get("beschreibung", "") or "")[:120],
             "link": v.get("webVideoUrl", "") or (f"https://www.tiktok.com/@{main_username}/video/{v.get('id')}" if v.get("id") else ""),
             "titel": (v.get("beschreibung", "") or "")[:60],
             "is_ausreisser": v.get("views", 0) > main_median_views * 5,
             "is_pinned": v.get("isPinned", False),
         })
 
-    # Bucket-Korrelationen
-    def bucket_analyse(key, videos):
-        buckets = {}
-        for v in videos:
-            val = v.get(key, "?")
-            if val not in buckets: buckets[val] = []
-            buckets[val].append(v.get("views", 0))
-        result = {}
-        for k, views_list in buckets.items():
-            if len(views_list) >= 3:
-                result[k] = {"median": int(statistics.median(views_list)), "count": len(views_list)}
-        return result
+    # Rohdaten für Content-Cluster-Bildung durch die KI (Thema statt Formulierungsstil)
+    # inkl. Save/Share-Rate — stärkeres Wachstumssignal als Views/Likes, weil es aktive
+    # Weiterempfehlung misst statt passives Liken
+    content_raw = [{
+        "beschreibung": (v.get("beschreibung", "") or "")[:150],
+        "views": v.get("views", 0),
+        "likes": v.get("likes", 0),
+        "er": round((v.get("likes", 0) / v.get("views", 1) * 100) if v.get("views", 0) > 0 else 0, 1),
+        "save_share_rate": round(((v.get("shares", 0) + v.get("saves", 0)) / v.get("views", 1) * 100) if v.get("views", 0) > 0 else 0, 2),
+        "dauer": v.get("dauer", 0),
+    } for v in newest]
 
+    # Bucket-Korrelationen (Länge, Posting-Zeit) — sekundär
     laenge_buckets = {}
     zeit_buckets = {}
-    hook_buckets = {}
     for v in newest:
         lb = get_laenge_bucket(v.get("dauer", 0))
         zb = get_zeit_bucket(v.get("datum", ""))
-        hb = classify_hook(v.get("beschreibung", ""))
         laenge_buckets.setdefault(lb, []).append(v.get("views", 0))
         zeit_buckets.setdefault(zb, []).append(v.get("views", 0))
-        hook_buckets.setdefault(hb, []).append(v.get("views", 0))
 
     def format_buckets(d):
         return {k: {"median": int(statistics.median(v)), "count": len(v), "ausreichend": len(v) >= 5} for k, v in d.items()}
@@ -577,12 +570,14 @@ def full_comparison_analysis(main_username, main_videos_dict, comparison_account
     if pinned:
         pinned_info = f"\nANGEPINNTE VIDEOS: {json.dumps([{'titel': (v.get('beschreibung','') or '')[:60], 'views': v.get('views',0), 'link': v.get('webVideoUrl','')} for v in pinned], ensure_ascii=False)}"
 
-    # CSV Creator Portal Daten
+    # CSV Creator Portal Daten — Nordstern-Metrik (Follows/1k) falls verfügbar
     csv_data = st.session_state.get("tiktok_csv_data", [])
     csv_context = ""
+    nordstern_verfuegbar = False
     if csv_data:
-        # Relevante Spalten extrahieren
         csv_summary = []
+        total_new_followers = 0
+        total_csv_views = 0
         for row in csv_data[:50]:
             entry = {}
             for key in ["video_caption", "posted_date", "video_views", "average_watch_time", "watched_full_video_rate", "traffic_source", "total_time_watched", "new_followers"]:
@@ -590,17 +585,64 @@ def full_comparison_analysis(main_username, main_videos_dict, comparison_account
                     entry[key] = row[key]
             if entry:
                 csv_summary.append(entry)
-        if csv_summary:
-            csv_context = f"\n\nCREATOR PORTAL DATEN (aus TikTok Studio CSV):\n{json.dumps(csv_summary[:20], ensure_ascii=False)}\n\nMit diesen Daten kannst du Watch-Time, Completion Rate und Traffic-Quelle analysieren."
+            try:
+                if row.get("new_followers") is not None:
+                    total_new_followers += float(row.get("new_followers") or 0)
+                if row.get("video_views") is not None:
+                    total_csv_views += float(row.get("video_views") or 0)
+            except (TypeError, ValueError):
+                pass
 
-    prompt = f"""Du bist ein datengetriebener TikTok-Content-Analyst. Erstelle eine ehrliche, strukturierte Analyse für @{main_username}.{csv_context}
+        follows_per_1k = round((total_new_followers / total_csv_views * 1000), 2) if total_csv_views > 0 else None
+        if follows_per_1k is not None:
+            nordstern_verfuegbar = True
+
+        if csv_summary:
+            csv_context = f"\n\nCREATOR PORTAL DATEN (aus TikTok Studio CSV):\n{json.dumps(csv_summary[:20], ensure_ascii=False)}\n\nAGGREGIERT: Follows pro 1.000 Views (Nordstern-Metrik) = {follows_per_1k if follows_per_1k is not None else 'nicht berechenbar'}.\nMit diesen Daten kannst du Watch-Time, Completion Rate, Traffic-Quelle UND vor allem die Follows/1k als primäre Bewertungsmetrik nutzen."
+
+    # Screenshot-Fallback für die Nordstern-Metrik, falls keine CSV vorliegt
+    screenshot_data = st.session_state.get("tiktok_screenshot_data")
+    if not nordstern_verfuegbar and screenshot_data:
+        sf = screenshot_data.get("new_followers")
+        sv = screenshot_data.get("video_views")
+        if sf is not None and sv:
+            follows_per_1k_screenshot = round((sf / sv * 1000), 2)
+            nordstern_verfuegbar = True
+            zeitraum_info = f" (Zeitraum laut Screenshot: {screenshot_data['zeitraum']})" if screenshot_data.get("zeitraum") else ""
+            csv_context += f"\n\nSCREENSHOT-DATEN (TikTok Studio Overview){zeitraum_info}: {sf} neue Follower bei {sv} Views im angezeigten Zeitraum.\nAGGREGIERT: Follows pro 1.000 Views (Nordstern-Metrik, aus Screenshot) = {follows_per_1k_screenshot}.\nHinweis: das ist eine aggregierte Account-weite Zahl für den angezeigten Zeitraum, keine Pro-Video-Aufschlüsselung — nutze sie trotzdem als primäre Bewertungsmetrik für die Gesamtdiagnose, aber weise darauf hin dass sie sich nicht 1:1 einzelnen Videos zuordnen lässt."
+
+    folgt_grund = onboarding.get("folgt_grund", "").strip()
+    ausreisser_hypothese = onboarding.get("ausreisser_hypothese", "").strip()
+
+    ausreisser_deep_dive_data = "Kein Ausreißer-Video vorhanden."
+    if groesster_ausreisser:
+        gv = groesster_ausreisser.get("views", 0)
+        gl = groesster_ausreisser.get("likes", 0)
+        ger = round((gl / gv * 100) if gv > 0 else 0, 1)
+        g_save_share = round(((groesster_ausreisser.get("shares", 0) + groesster_ausreisser.get("saves", 0)) / gv * 100) if gv > 0 else 0, 2)
+        ausreisser_deep_dive_data = json.dumps({
+            "beschreibung": (groesster_ausreisser.get("beschreibung", "") or ""),
+            "views": gv,
+            "engagement_rate": ger,
+            "save_share_rate": g_save_share,
+            "dauer": groesster_ausreisser.get("dauer", 0),
+            "link": groesster_ausreisser.get("webVideoUrl", ""),
+            "wievielfaches_des_medians": round(gv / main_median_views, 1) if main_median_views > 0 else None,
+        }, ensure_ascii=False)
+
+    prompt = f"""Du bist ein Wachstumsanalyst für TikTok-Accounts, kein reiner Statistiker. Dein Ziel ist nicht, Views-Korrelationen zu beschreiben, sondern zu diagnostizieren, warum ein Account wächst oder stagniert — und daraus einen testbaren Skalierungsplan abzuleiten.{csv_context}
+
+NORDSTERN-METRIK-REGEL:
+Views sind eine Vanity-Metrik, kein Wachstumsindikator. Wenn Creator-Portal-Daten mit "Follows aus Video" vorliegen (siehe Nordstern-Metrik oben, {"verfügbar" if nordstern_verfuegbar else "NICHT verfügbar"}): das ist die primäre Sortier- und Bewertungsmetrik, nicht Views. Wenn nicht vorhanden: explizit und wiederholt kennzeichnen, dass die Analyse auf einer Proxy-Metrik (Views/Engagement Rate) beruht, nicht auf der eigentlichen Zielmetrik. Das gehört in die Zusammenfassung ganz oben, nicht in eine Fußnote.
 
 CREATOR KONTEXT:
 - Nische: {nische}
 - Ziel: {onboarding.get('ziel', 'Nicht angegeben')}
 - Zielgruppe: {onboarding.get('zielgruppe', 'Nicht angegeben')}
-- Erfahrung: {onboarding.get('erfahrung', 'Nicht angegeben')}
+- Wie lange schon konsistent postend: {onboarding.get('erfahrung', 'Nicht angegeben')}
 - Follower-Range für Vergleich: {follower_range}
+- Positionierungs-Antwort ("Leute folgen mir, weil ___"): {folgt_grund if folgt_grund else 'NICHT beantwortet'}
+- Eigene Hypothese zum größten Ausreißer-Video: {ausreisser_hypothese if ausreisser_hypothese else 'Keine Angabe'}
 
 ACCOUNT DATEN (@{main_username}):
 - Median Views (alle 50 Videos): {main_median_views:,}
@@ -610,65 +652,67 @@ ACCOUNT DATEN (@{main_username}):
 - Ausreißer (>5x Median): {len(ausreisser)} Videos
 {pinned_info}
 
-RANKING ALLE VIDEOS (Top 10 nach Views):
+GRÖSSTER AUSREISSER FÜR DEEP-DIVE:
+{ausreisser_deep_dive_data}
+
+ALLE VIDEOS FÜR CONTENT-THEMEN-CLUSTERING (bitte selbst nach INHALTLICHEM Thema clustern, nicht nach Formulierungsstil):
+Kategorien: Persönliche Story/Journey, Training/Prozess, Zahlen/Stats/Ergebnis, Kontroverse Meinung/Take, Education/Tipps, Community-Frage/Vergleich, Humor/Trend/Meme, Sonstiges (Ziel: <15% der Videos, sonst Kategorien nachschärfen).
+Jedes Video enthält zusätzlich "save_share_rate" ((Shares+Saves)/Views): das ist ein stärkeres Wachstumssignal als ER, weil es aktive Weiterempfehlung statt passives Liken misst — nutze es als zweite Bewertungsdimension neben ER, besonders wenn keine Follows/1k-Daten vorliegen.
+{json.dumps(content_raw, ensure_ascii=False)}
+
+RANKING TOP 10 NACH VIEWS:
 {json.dumps(ranking[:10], ensure_ascii=False)}
 
-BUCKET-KORRELATIONEN (nur Buckets mit min. 3 Videos):
+BUCKET-KORRELATIONEN (Länge, Posting-Zeit — SEKUNDÄR, nur Buckets mit min. 3 Videos, nachrangig gegenüber Content-Cluster-Analyse):
 Videolänge: {json.dumps(format_buckets(laenge_buckets), ensure_ascii=False)}
 Posting-Zeit: {json.dumps(format_buckets(zeit_buckets), ensure_ascii=False)}
-Hook-Typ: {json.dumps(format_buckets(hook_buckets), ensure_ascii=False)}
 
 VERGLEICHS-ACCOUNTS (ähnliche Range):
 {json.dumps(comparison_summary, ensure_ascii=False, indent=2)}
 
 WICHTIGSTE REGELN:
 - Verwende IMMER den Median als Referenz, nicht den Durchschnitt
+- Wenn Follows/1k verfügbar: das ist die Hauptbewertungsmetrik. Wenn nicht: Views/ER als Proxy verwenden und das explizit wiederholt kennzeichnen
 - Markiere Ausreißer explizit und zeige Baseline mit und ohne
 - Vergleiche nur mit Accounts in ähnlicher Follower-Range — keine 1Mio+ Accounts als Benchmark
-- Bei Buckets mit <5 Videos: explizit sagen "nicht genug Daten"
+- Bei Buckets/Clustern mit <5 Videos (bzw. n<8 für Bucket-Korrelationen): explizit "nicht genug Daten" bzw. "schwaches Signal bei n=X" sagen — Diagnose-Ebene und Detail-Ebene klar trennen, aber im selben Report zulassen
 - KEINE Hashtag-Empfehlungen
-- KEINE Posting-Frequenz unter "beeinflussbar" listen wenn sie nicht gemessen wurde
-- Wenn 43/50 Videos in einem Bucket sind: KEINE Bucket-Empfehlung — stattdessen als Handlungsanweisung: "Um X zu testen, produziere bewusst Y Videos in anderen Buckets"
-- Hook-Klassifizierung IMMER mit Hinweis: "automatisiert und fehleranfällig". "Sonstiges" als größte Gruppe = Klassifizierung zu grob, das explizit ansprechen
-- Datenpunkt-Konsistenz: wenn Bucket-Zählung und vollständige Datensätze unterschiedlich sind, erkläre die Diskrepanz
-- Einzelvideo-Beobachtungen NICHT gleichwertig zu Bucket-Empfehlungen behandeln — eigene Kategorie verwenden
+- Content-Cluster-Tabelle ist wichtiger als Bucket-Korrelationen — sie zeigt welche THEMEN performen
+- Bei vager Positionierungs-Antwort ("weil ich coole Videos mache" o.ä.): das explizit als Kernbefund benennen, nicht übergehen
 - Links zu Videos immer mitangeben wenn verfügbar
-- Ton: nüchtern, konkret, keine Superlative außer bei >3x Abweichung
+- Ton: Direkt, strategisch, nicht zurückhaltend bei der Diagnose — aber ehrlich bei der Datenbasis für einzelne Zahlen
 
 Erstelle die Analyse in dieser Struktur auf Deutsch:
 
-## 1. 📊 Bereinigte Baseline
-Median mit und ohne Ausreißer. Klare Referenzzahl für alles weitere.
+## 1. 🎯 Zusammenfassung zuerst
+3-4 Sätze. Beantworte direkt: "Ist das primär ein Content-Problem, ein Positionierungs-Problem, oder fehlen schlicht die Daten für eine Diagnose?" Keine Statistik-Vorschau, sondern eine These, die danach belegt wird.
 
-## 2. 📋 Ranking-Tabelle (Top 10)
-Tabelle mit: Rang | Views | ER% | Länge | Zeit | Hook-Typ | Link
+## 2. 🧭 Positionierungs-Check
+Nutze die Positionierungs-Antwort. Ist sie spezifisch genug, um als wiederholbares Content-Versprechen zu funktionieren? Vage Antwort = das selbst als Kernbefund benennen. Konkrete Antwort = prüfen ob die Top-Videos tatsächlich zu diesem Versprechen passen oder ob Content und Positionierung auseinanderlaufen.
 
-## 3. 🔍 Bucket-Korrelationen
-Performance nach Länge, Posting-Zeit und Hook-Typ. Nur Buckets mit ausreichend Daten. Bei zu wenig Daten: ehrlich sagen. Wenn eine Variable keine Varianz hat (alle Videos in einem Bucket): als "nicht testbar, erst Varianz herstellen" markieren und konkret sagen wie.
+## 3. 🗂️ Content-Themen-Cluster
+Tabelle: Content-Säule | Anzahl Videos | Median Views | Median ER% | Median Save/Share-Rate% | Follows/1k (falls verfügbar). Kategorisiere nach INHALTLICHEM Thema, nicht nach Formulierungsstil. Save/Share-Rate als zweite Bewertungsdimension nutzen, wenn keine Follows/1k-Daten da sind — hohe Save/Share-Rate ist ein stärkeres Wachstumssignal als reine Views.
 
-## 4. ⚖️ Beeinflussbar vs. Algorithmus
-Zwei getrennte Listen — nur Faktoren die in den Daten tatsächlich gemessen wurden unter "beeinflussbar" listen.
+## 4. 🔬 Deep-Dive: Größter Ausreißer
+Thema, Struktur, Hook der ersten 2 Sekunden im Detail beschreiben (aus der Beschreibung ableitbar). Engagement Rate im Vergleich zur Baseline — niedrige ER trotz hoher Views explizit als Warnsignal (breite Ausspielung ohne Zielgruppen-Fit) benennen. Vergleich mit der eigenen Nutzer-Hypothese, falls vorhanden. Explizit beantworten: Ist das Video reproduzierbar (Format wiederholbar) oder ein einmaliger Kontext-Zufall (Trend, Saisonalität)?
 
-## 5. 👥 Peer-Vergleich
-Nur mit Accounts in ähnlicher Range. Falls keine: explizit sagen.
+## 5. 📈 Content-Cluster vs. Baseline
+Kombiniere Views/Follows-Daten mit ER pro Content-Cluster: Hohe Views + niedrige ER = Reichweite ohne Bindung. Niedrige Views + hohe ER = Nischentreffer, evtl. zu klein ausgespielt. Zielprofil für Skalierung: Cluster mit überdurchschnittlichen Werten in BEIDEN Metriken.
 
-## 6. 🎯 Bucket-Empfehlungen (aus echten Mustern)
-Nur Empfehlungen die direkt aus Bucket-Daten kommen. Jede mit konkretem Testkriterium.
+## 6. 🔍 Bucket-Korrelationen (sekundär)
+Länge, Posting-Zeit — mit Mindestfallzahlen (n≥8 für "auswertbar"), klar als Feintuning gekennzeichnet, nicht als Strategie.
 
-## 7. 🔎 Einzelbeobachtungen (noch keine Bucket-Bestätigung)
-Auffälligkeiten aus einzelnen Videos die noch nicht durch Bucket-Analyse bestätigt sind — klar als unsicher markiert.
+## 7. 👥 Peer-Vergleich
+Nur mit Accounts in ähnlicher Range. Falls keine passenden: explizit sagen.
 
-## 8. 🔍 Transparenz
-Anzahl Videos, fehlende Variablen, Hinweis dass Muster keine Garantie sind. Erkläre Diskrepanzen in den Datenpunkten.
+## 8. 🚀 Wiederholbares Format ableiten
+Aus dem stärksten Content-Cluster + dem Ausreißer-Deep-Dive: 2-3 konkrete, benannte Formate mit Variablen-Slot ableiten (keine Einzel-Hooks). Beispiele: "Road to X", "Ich teste ob X stimmt", "3 Learnings nach X".
 
-## 5. 👥 Peer-Vergleich
-Nur mit Accounts in ähnlicher Range. Falls keine passenden: das explizit sagen.
+## 9. 📅 30-Tage-Testplan
+Für jedes vorgeschlagene Format: wie viele Videos posten, welche Metrik nach 30 Tagen prüfen (bevorzugt Follows/1k, sonst ER als Proxy), welcher Schwellenwert "Format funktioniert" vs. "Format verwerfen" bedeutet.
 
-## 6. 🎯 3 testbare Handlungsempfehlungen
-Jede mit: konkretem Bucket-Bezug + Testkriterium ("poste 5 Videos in Bucket X") + als Hypothese markiert wenn <10 Datenpunkte.
-
-## 7. 🔍 Transparenz
-Anzahl Videos analysiert, fehlende Variablen (Retention, Thumbnail etc.), Hinweis dass Muster keine Garantie sind."""
+## 10. 🔍 Transparenz
+Welche Datenpunkte fehlten (v.a. Follows/1k, Retention, Traffic-Quelle wenn kein Creator-Portal-Zugriff). Klarstellen: ohne Follows/1k-Daten bleibt jede Aussage über "was funktioniert" auf Reichweite bezogen, nicht auf Wachstum. Stichprobengröße pro Cluster/Bucket erneut auflisten."""
 
     message = client.messages.create(model="claude-sonnet-4-6", max_tokens=6000, messages=[{"role": "user", "content": prompt}])
     return message.content[0].text, main_avg_views, main_avg_engagement
@@ -697,6 +741,40 @@ def load_analyses(user_id):
         return result.data
     except:
         return []
+
+def extract_nordstern_from_screenshot(image_bytes, media_type):
+    """Liest 'Neue Follower' und 'Videoaufrufe/Views' aus einem TikTok Studio Overview-Screenshot per Vision aus."""
+    b64_image = base64.standard_b64encode(image_bytes).decode("utf-8")
+    prompt = """Das ist ein Screenshot aus dem TikTok Studio Overview/Analytics-Bereich (kann Deutsch oder Englisch sein,
+z.B. Labels wie "Follower"/"Neue Follower"/"New followers" und "Videoaufrufe"/"Views"/"Video views").
+
+Finde die beiden Zahlen:
+1. Neue Follower im angezeigten Zeitraum (new_followers)
+2. Videoaufrufe/Views im angezeigten Zeitraum (video_views)
+
+Zahlen können abgekürzt sein (z.B. "1,2K" = 1200, "45.3K" = 45300, "2,1Mio"/"2.1M" = 2100000) — rechne sie in echte
+Ganzzahlen um.
+
+Antworte NUR mit einem JSON-Objekt, kein weiterer Text, kein Markdown:
+{"new_followers": <int oder null falls nicht erkennbar>, "video_views": <int oder null falls nicht erkennbar>, "zeitraum": "<Text wie im Screenshot angegeben, z.B. 'Letzte 28 Tage', oder null>"}"""
+
+    message = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=300,
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": b64_image}},
+                {"type": "text", "text": prompt}
+            ]
+        }]
+    )
+    raw = message.content[0].text.strip()
+    raw = re.sub(r"^```(?:json)?|```$", "", raw.strip(), flags=re.MULTILINE).strip()
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        return None
 
 
 # ─── HELPERS ──────────────────────────────────────────────────────────────────
@@ -1984,15 +2062,32 @@ def show_app():
 
             zielgruppe = st.text_input("Wer ist deine Zielgruppe?", placeholder="z.B. Frauen 18-30, Fitness-Interessierte", key="onboarding_zielgruppe")
 
-            erfahrung = st.selectbox("Wie lange bist du schon auf TikTok aktiv?", [
+            erfahrung = st.selectbox("Wie lange postest du schon konsistent?", [
                 "Weniger als 3 Monate",
                 "3-12 Monate",
-                "1-3 Jahre",
-                "Mehr als 3 Jahre",
+                "Mehr als 12 Monate",
             ], key="onboarding_erfahrung")
+
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            folgt_grund = st.text_input(
+                "Vervollständige: \"Leute folgen mir, weil ___\" *",
+                placeholder="z.B. ich meine 5K-Zeit von 24 auf 20 Minuten drücken will",
+                key="onboarding_folgt_grund"
+            )
+            st.markdown('<div style="font-size:11px;color:rgba(232,230,224,0.3);margin-top:-8px;margin-bottom:4px;">Pflichtfeld — auch eine vage Antwort ist ein wichtiger Befund für die Analyse.</div>', unsafe_allow_html=True)
+
+            ausreisser_hypothese = st.text_area(
+                "Dein größtes Ausreißer-Video: warum, glaubst du, hat es funktioniert? (optional)",
+                placeholder="Kurze eigene Einschätzung — wird später gegen die Analyse gespiegelt",
+                key="onboarding_ausreisser_hypothese",
+                height=70
+            )
 
             filter_paid = st.toggle("Bezahlte Werbung (Ads) aus der Analyse rausfiltern", value=True, key="filter_paid")
             if st.button("Account scannen →", type="primary"):
+                if not folgt_grund.strip():
+                    st.error("Bitte beantworte: \"Leute folgen mir, weil ___\" — das ist Pflicht für die Analyse.")
+                    st.stop()
                 if username:
                     username = username.strip().lower().replace("@", "")
                     # Check token for non-premium
@@ -2023,7 +2118,9 @@ def show_app():
                             "zielgruppe": zielgruppe,
                             "erfahrung": erfahrung,
                             "follower_range": follower_range,
-                            "filter_paid": filter_paid
+                            "filter_paid": filter_paid,
+                            "folgt_grund": folgt_grund.strip(),
+                            "ausreisser_hypothese": ausreisser_hypothese.strip(),
                         }
                         st.session_state.step = 1.5
                         st.session_state.manual_accounts = [""] * 6
@@ -2033,31 +2130,57 @@ def show_app():
 
         elif st.session_state.step == 1.5:
             username = st.session_state.username
-            st.markdown("### Optional: TikTok Studio Daten hochladen")
+            st.markdown("### Optional: Echte Wachstumsdaten hinzufügen")
             st.markdown("""
             <div style="background:rgba(29,158,117,0.05);border:0.5px solid rgba(29,158,117,0.2);
                         border-radius:8px;padding:14px 16px;margin-bottom:16px;">
                 <div style="font-size:12px;font-weight:700;color:rgba(29,158,117,0.8);margin-bottom:6px;">
-                    📊 Watch-Time & Traffic-Quelle hinzufügen
+                    📊 Warum das wichtig ist
                 </div>
                 <div style="font-size:12px;color:rgba(232,230,224,0.4);line-height:1.7;">
-                    Öffne <strong style="color:#e8e6e0;">studio.tiktok.com</strong> auf dem PC →
-                    Analytics → Export → CSV/Excel downloaden und hier hochladen.<br>
-                    Damit bekommst du Watch-Time, Completion Rate und Traffic-Quelle in der Analyse.
+                    Views sind eine Vanity-Metrik. Mit Follower-Zuwachs-Daten aus TikTok Studio wird die Analyse
+                    präziser, weil sie zeigt was wirklich Wachstum bringt — nicht nur Reichweite.
                 </div>
             </div>
             """, unsafe_allow_html=True)
 
-            csv_file = st.file_uploader("TikTok Studio Export (CSV oder Excel)", type=["csv", "xlsx"], key="tiktok_csv")
+            tab_screenshot, tab_csv = st.tabs(["⚡ Screenshot (schnell)", "📄 CSV-Export (detailliert)"])
 
-            col_skip, col_next = st.columns([1, 2])
-            with col_skip:
-                if st.button("Überspringen →", use_container_width=True):
-                    st.session_state.step = 2
-                    st.rerun()
-            with col_next:
+            with tab_screenshot:
+                st.markdown("""
+                <div style="font-size:12px;color:rgba(232,230,224,0.4);line-height:1.7;margin-bottom:10px;">
+                    Öffne die <strong style="color:#e8e6e0;">TikTok App → Studio/Analytics-Übersicht</strong>,
+                    mach einen Screenshot (zeigt "Neue Follower" und "Videoaufrufe") und lade ihn hier hoch.
+                    Dauert 10 Sekunden, kein Export nötig.
+                </div>
+                """, unsafe_allow_html=True)
+                screenshot_file = st.file_uploader("Screenshot hochladen", type=["png", "jpg", "jpeg"], key="tiktok_screenshot")
+                if screenshot_file:
+                    if st.button("Screenshot auslesen & weiter →", type="primary", use_container_width=True, key="btn_screenshot"):
+                        with st.spinner("Lese Zahlen aus Screenshot..."):
+                            image_bytes = screenshot_file.getvalue()
+                            media_type = screenshot_file.type or "image/png"
+                            result = extract_nordstern_from_screenshot(image_bytes, media_type)
+                        if result and (result.get("new_followers") is not None) and (result.get("video_views") is not None):
+                            st.session_state["tiktok_screenshot_data"] = result
+                            st.success(f"✅ Erkannt: {result['new_followers']} neue Follower bei {result['video_views']} Views" + (f" ({result['zeitraum']})" if result.get("zeitraum") else ""))
+                            time.sleep(1)
+                            st.session_state.step = 2
+                            st.rerun()
+                        else:
+                            st.error("Konnte die Zahlen nicht sicher auslesen. Versuch einen klareren Screenshot oder nutze den CSV-Tab.")
+
+            with tab_csv:
+                st.markdown("""
+                <div style="font-size:12px;color:rgba(232,230,224,0.4);line-height:1.7;margin-bottom:10px;">
+                    Öffne <strong style="color:#e8e6e0;">studio.tiktok.com</strong> auf dem PC →
+                    Analytics → Export → CSV/Excel downloaden und hier hochladen.<br>
+                    Liefert zusätzlich Watch-Time, Completion Rate und Traffic-Quelle pro Video.
+                </div>
+                """, unsafe_allow_html=True)
+                csv_file = st.file_uploader("TikTok Studio Export (CSV oder Excel)", type=["csv", "xlsx"], key="tiktok_csv")
                 if csv_file:
-                    if st.button("Datei hochladen & weiter →", type="primary", use_container_width=True):
+                    if st.button("Datei hochladen & weiter →", type="primary", use_container_width=True, key="btn_csv"):
                         try:
                             if csv_file.name.endswith(".xlsx"):
                                 df = pd.read_excel(csv_file)
@@ -2070,6 +2193,11 @@ def show_app():
                             st.rerun()
                         except Exception as e:
                             st.error(f"Fehler: {e}")
+
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            if st.button("Überspringen →", use_container_width=True):
+                st.session_state.step = 2
+                st.rerun()
 
         elif st.session_state.step == 2:
             username = st.session_state.username
