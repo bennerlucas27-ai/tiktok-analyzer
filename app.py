@@ -714,8 +714,11 @@ Für jedes vorgeschlagene Format: wie viele Videos posten, welche Metrik nach 30
 ## 10. 🔍 Transparenz
 Welche Datenpunkte fehlten (v.a. Follows/1k, Retention, Traffic-Quelle wenn kein Creator-Portal-Zugriff). Klarstellen: ohne Follows/1k-Daten bleibt jede Aussage über "was funktioniert" auf Reichweite bezogen, nicht auf Wachstum. Stichprobengröße pro Cluster/Bucket erneut auflisten."""
 
-    message = client.messages.create(model="claude-sonnet-4-6", max_tokens=6000, messages=[{"role": "user", "content": prompt}])
-    return message.content[0].text, main_avg_views, main_avg_engagement
+    message = client.messages.create(model="claude-sonnet-4-6", max_tokens=12000, messages=[{"role": "user", "content": prompt}])
+    analysis_text = message.content[0].text
+    if message.stop_reason == "max_tokens":
+        analysis_text += "\n\n---\n⚠️ **Hinweis:** Diese Analyse wurde wegen Längenbegrenzung abgeschnitten. Nicht alle Abschnitte sind vollständig."
+    return analysis_text, main_avg_views, main_avg_engagement
 
 def save_analysis(user_id, username, nische, avg_views, engagement_rate, comparison_accounts, analysis_text, video_dates=None):
     try:
