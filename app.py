@@ -192,6 +192,7 @@ def sign_out():
         del st.session_state[key]
     st.rerun()
 
+@st.cache_data(ttl=1800, show_spinner=False)
 def create_checkout_session(user_email, user_id):
     try:
         session = stripe.checkout.Session.create(
@@ -208,6 +209,7 @@ def create_checkout_session(user_email, user_id):
     except Exception as e:
         return None
 
+@st.cache_data(ttl=60, show_spinner=False)
 def has_used_free_analysis(user_id):
     try:
         result = supabase.table("analyses").select("id").eq("user_id", user_id).execute()
@@ -215,6 +217,7 @@ def has_used_free_analysis(user_id):
     except:
         return False
 
+@st.cache_data(ttl=60, show_spinner=False)
 def is_premium(user_id):
     try:
         result = supabase.table("users").select("is_premium").eq("id", user_id).execute()
@@ -225,6 +228,7 @@ def is_premium(user_id):
         return False
 
 
+@st.cache_data(ttl=60, show_spinner=False)
 def get_tokens(user_id):
     try:
         result = supabase.table("users").select("tokens").eq("id", user_id).execute()
@@ -240,6 +244,7 @@ def deduct_token(user_id):
         if current <= 0:
             return False
         supabase.table("users").update({"tokens": current - 1}).eq("id", user_id).execute()
+        get_tokens.clear()
         return True
     except:
         return False
@@ -248,10 +253,12 @@ def add_tokens(user_id, amount):
     try:
         current = get_tokens(user_id)
         supabase.table("users").upsert({"id": user_id, "tokens": current + amount}).execute()
+        get_tokens.clear()
         return True
     except:
         return False
 
+@st.cache_data(ttl=1800, show_spinner=False)
 def create_token_checkout(user_email, user_id, price_id, tokens):
     try:
         session = stripe.checkout.Session.create(
@@ -678,9 +685,12 @@ def save_analysis(user_id, username, nische, avg_views, engagement_rate, compari
             "analysis_text": analysis_text,
             "video_dates": video_dates or []
         }).execute()
+        load_analyses.clear()
+        has_used_free_analysis.clear()
     except Exception as e:
         st.warning(f"Speichern fehlgeschlagen: {e}")
 
+@st.cache_data(ttl=30, show_spinner=False)
 def load_analyses(user_id):
     try:
         result = supabase.table("analyses").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
@@ -1560,6 +1570,7 @@ def quick_refresh(user_id, username):
                 "engagement_rate": engagement,
                 "video_dates": video_dates_list,
             }).eq("id", latest_id).execute()
+            load_analyses.clear()
         else:
             st.error("Keine bestehende Analyse gefunden. Mach zuerst eine vollständige Analyse.")
             return False
@@ -1851,12 +1862,9 @@ def show_app():
             </div>
             """, unsafe_allow_html=True)
 
-            # Get username from latest analysis
-            try:
-                latest_result = supabase.table("analyses").select("username").eq("user_id", user_id).order("created_at", desc=True).limit(1).execute()
-                qr_username = latest_result.data[0]["username"] if latest_result.data else None
-            except:
-                qr_username = None
+            # Get username from latest analysis (cached, billig)
+            _sidebar_analyses = load_analyses(user_id)
+            qr_username = _sidebar_analyses[0]["username"] if _sidebar_analyses else None
 
             if qr_username:
                 if st.button(f"⚡ @{qr_username} refreshen", use_container_width=True, key="quick_refresh_btn"):
