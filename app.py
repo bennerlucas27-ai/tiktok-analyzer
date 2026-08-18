@@ -299,6 +299,17 @@ def scrape_tiktok_account(username):
     return requests.get(f"https://api.apify.com/v2/datasets/{dataset_id}/items", params=params).json()
 
 def extract_video_data(data, filter_paid=False):
+    def get_cover_url(item):
+        vm = item.get("videoMeta", {}) or {}
+        if vm.get("coverUrl"):
+            return vm["coverUrl"]
+        if vm.get("originalCoverUrl"):
+            return vm["originalCoverUrl"]
+        covers = item.get("covers")
+        if isinstance(covers, dict) and covers.get("default"):
+            return covers["default"]
+        return ""
+
     videos = []
     pinned_videos = []
     for item in data:
@@ -324,6 +335,7 @@ def extract_video_data(data, filter_paid=False):
                 "webVideoUrl": item.get("webVideoUrl", ""),
                 "isPinned": is_pinned,
                 "isAd": is_paid,
+                "cover_url": get_cover_url(item),
             }
 
             if is_pinned:
@@ -456,6 +468,71 @@ Antworte NUR in diesem JSON Format:
         text = match.group(0)
     return json.loads(text)
 
+def analyze_thumbnails_via_vision(videos, max_videos=20):
+    """
+    Fallback für Accounts mit wenig/keinen Video-Beschreibungen: lässt die Cover-Bilder
+    per Vision klassifizieren, statt sich auf (fehlenden) Caption-Text zu verlassen.
+    Nimmt die Top-N Videos nach Views (beste Kosten/Nutzen-Balance), gibt ein Dict
+    {video_id: {"thema": ..., "kurzbeschreibung": ...}} zurück.
+    """
+    candidates = [v for v in videos if v.get("cover_url")]
+    candidates = sorted(candidates, key=lambda v: v.get("views", 0), reverse=True)[:max_videos]
+    if not candidates:
+        return {}
+
+    content_blocks = []
+    id_order = []
+    for v in candidates:
+        try:
+            img_resp = requests.get(v["cover_url"], timeout=8)
+            if img_resp.status_code != 200 or not img_resp.content:
+                continue
+            b64_image = base64.standard_b64encode(img_resp.content).decode("utf-8")
+            media_type = img_resp.headers.get("Content-Type", "image/jpeg").split(";")[0] or "image/jpeg"
+            if media_type not in ("image/jpeg", "image/png", "image/webp", "image/gif"):
+                media_type = "image/jpeg"
+            content_blocks.append({"type": "image", "source": {"type": "base64", "media_type": media_type, "data": b64_image}})
+            id_order.append(v.get("id", ""))
+        except Exception:
+            continue
+
+    if not content_blocks:
+        return {}
+
+    prompt_text = f"""Das sind {len(content_blocks)} TikTok-Video-Cover, in genau dieser Reihenfolge (Video 1, Video 2, ...).
+Die Videos haben keine oder keine aussagekräftige Beschreibung — deshalb sollst du das INHALTLICHE Thema jedes Videos
+allein aus dem Thumbnail einschätzen.
+
+Kategorien: Persönliche Story/Journey, Training/Prozess, Zahlen/Stats/Ergebnis, Kontroverse Meinung/Take, Education/Tipps,
+Community-Frage/Vergleich, Humor/Trend/Meme, Sonstiges.
+
+Antworte NUR mit einem JSON-Array, kein weiterer Text, kein Markdown, ein Objekt pro Video in der gegebenen Reihenfolge:
+[{{"index": 1, "thema": "<Kategorie>", "kurzbeschreibung": "<max. 10 Wörter was auf dem Cover zu sehen ist>"}}, ...]"""
+
+    content_blocks.append({"type": "text", "text": prompt_text})
+
+    try:
+        message = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1500,
+            messages=[{"role": "user", "content": content_blocks}]
+        )
+        raw = message.content[0].text.strip()
+        raw = re.sub(r"^```(?:json)?|```$", "", raw.strip(), flags=re.MULTILINE).strip()
+        parsed = json.loads(raw)
+    except Exception:
+        return {}
+
+    result = {}
+    for entry in parsed:
+        idx = entry.get("index")
+        if idx and 1 <= idx <= len(id_order):
+            result[id_order[idx - 1]] = {
+                "thema": entry.get("thema", "Sonstiges"),
+                "kurzbeschreibung": entry.get("kurzbeschreibung", ""),
+            }
+    return result
+
 def full_comparison_analysis(main_username, main_videos_dict, comparison_accounts_data, nische):
     import statistics
 
@@ -528,14 +605,40 @@ def full_comparison_analysis(main_username, main_videos_dict, comparison_account
     # Rohdaten für Content-Cluster-Bildung durch die KI (Thema statt Formulierungsstil)
     # inkl. Save/Share-Rate — stärkeres Wachstumssignal als Views/Likes, weil es aktive
     # Weiterempfehlung misst statt passives Liken
-    content_raw = [{
-        "beschreibung": (v.get("beschreibung", "") or "")[:150],
-        "views": v.get("views", 0),
-        "likes": v.get("likes", 0),
-        "er": round((v.get("likes", 0) / v.get("views", 1) * 100) if v.get("views", 0) > 0 else 0, 1),
-        "save_share_rate": round(((v.get("shares", 0) + v.get("saves", 0)) / v.get("views", 1) * 100) if v.get("views", 0) > 0 else 0, 2),
-        "dauer": v.get("dauer", 0),
-    } for v in newest]
+    def hat_aussagekraeftige_beschreibung(v):
+        text = (v.get("beschreibung", "") or "").strip()
+        if len(text) < 8:
+            return False
+        # nur Hashtags/generische Tags ohne echten Text zählen nicht als aussagekräftig
+        woerter_ohne_hashtags = [w for w in text.split() if not w.startswith("#")]
+        return len(" ".join(woerter_ohne_hashtags).strip()) >= 8
+
+    videos_ohne_caption = [v for v in newest if not hat_aussagekraeftige_beschreibung(v)]
+    caption_fehlt_anteil = round(len(videos_ohne_caption) / len(newest), 2) if newest else 0
+
+    # Vision-Fallback: wenn >50% der Videos keine brauchbare Caption haben, ist Text-Clustering
+    # nicht belastbar — dann Cover-Bilder der wichtigsten Videos per Vision klassifizieren
+    vision_themen = {}
+    vision_fallback_aktiv = caption_fehlt_anteil > 0.5
+    if vision_fallback_aktiv:
+        vision_themen = analyze_thumbnails_via_vision(newest, max_videos=20)
+
+    content_raw = []
+    for v in newest:
+        vid = v.get("id", "")
+        vision_info = vision_themen.get(vid)
+        entry = {
+            "beschreibung": (v.get("beschreibung", "") or "")[:150],
+            "views": v.get("views", 0),
+            "likes": v.get("likes", 0),
+            "er": round((v.get("likes", 0) / v.get("views", 1) * 100) if v.get("views", 0) > 0 else 0, 1),
+            "save_share_rate": round(((v.get("shares", 0) + v.get("saves", 0)) / v.get("views", 1) * 100) if v.get("views", 0) > 0 else 0, 2),
+            "dauer": v.get("dauer", 0),
+        }
+        if vision_info:
+            entry["thema_aus_thumbnail_erkannt"] = vision_info["thema"]
+            entry["thumbnail_inhalt"] = vision_info["kurzbeschreibung"]
+        content_raw.append(entry)
 
     # Bucket-Korrelationen (Länge, Posting-Zeit) — sekundär
     laenge_buckets = {}
@@ -658,6 +761,7 @@ GRÖSSTER AUSREISSER FÜR DEEP-DIVE:
 ALLE VIDEOS FÜR CONTENT-THEMEN-CLUSTERING (bitte selbst nach INHALTLICHEM Thema clustern, nicht nach Formulierungsstil):
 Kategorien: Persönliche Story/Journey, Training/Prozess, Zahlen/Stats/Ergebnis, Kontroverse Meinung/Take, Education/Tipps, Community-Frage/Vergleich, Humor/Trend/Meme, Sonstiges (Ziel: <15% der Videos, sonst Kategorien nachschärfen).
 Jedes Video enthält zusätzlich "save_share_rate" ((Shares+Saves)/Views): das ist ein stärkeres Wachstumssignal als ER, weil es aktive Weiterempfehlung statt passives Liken misst — nutze es als zweite Bewertungsdimension neben ER, besonders wenn keine Follows/1k-Daten vorliegen.
+{"HINWEIS: Bei " + str(round(caption_fehlt_anteil*100)) + "% der Videos fehlt eine aussagekräftige Beschreibung — für die wichtigsten davon wurde das Thema per Bild-Analyse aus dem Video-Cover geschätzt (Feld 'thema_aus_thumbnail_erkannt' + 'thumbnail_inhalt'). Nutze dieses Feld als primäre Cluster-Grundlage, wo vorhanden — es ist verlässlicher als aus fehlendem Text zu raten. Kennzeichne im Report trotzdem, dass diese Zuordnung auf Bild-Schätzung beruht, nicht auf expliziten Angaben des Creators." if vision_fallback_aktiv else ""}
 {json.dumps(content_raw, ensure_ascii=False)}
 
 RANKING TOP 10 NACH VIEWS:
@@ -712,7 +816,7 @@ Aus dem stärksten Content-Cluster + dem Ausreißer-Deep-Dive: 2-3 konkrete, ben
 Für jedes vorgeschlagene Format: wie viele Videos posten, welche Metrik nach 30 Tagen prüfen (bevorzugt Follows/1k, sonst ER als Proxy), welcher Schwellenwert "Format funktioniert" vs. "Format verwerfen" bedeutet.
 
 ## 10. 🔍 Transparenz
-Welche Datenpunkte fehlten (v.a. Follows/1k, Retention, Traffic-Quelle wenn kein Creator-Portal-Zugriff). Klarstellen: ohne Follows/1k-Daten bleibt jede Aussage über "was funktioniert" auf Reichweite bezogen, nicht auf Wachstum. Stichprobengröße pro Cluster/Bucket erneut auflisten."""
+Welche Datenpunkte fehlten (v.a. Follows/1k, Retention, Traffic-Quelle wenn kein Creator-Portal-Zugriff). Klarstellen: ohne Follows/1k-Daten bleibt jede Aussage über "was funktioniert" auf Reichweite bezogen, nicht auf Wachstum. Stichprobengröße pro Cluster/Bucket erneut auflisten.{"Zusätzlich klarstellen: " + str(round(caption_fehlt_anteil*100)) + "% der Videos hatten keine aussagekräftige Beschreibung — die Content-Cluster-Zuordnung für diese Videos basiert auf einer Bild-Analyse des Thumbnails, nicht auf Angaben des Creators. Das ist eine Schätzung, kein Fakt." if vision_fallback_aktiv else ""}"""
 
     message = client.messages.create(model="claude-sonnet-4-6", max_tokens=12000, messages=[{"role": "user", "content": prompt}])
     analysis_text = message.content[0].text
