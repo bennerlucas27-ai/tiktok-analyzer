@@ -971,7 +971,7 @@ def show_auth():
         st.markdown("""
         <div style="text-align:center;margin-top:18px;">
             <span style="font-size:11px;color:rgba(232,230,224,0.18);">
-                ✓ 1 kostenlose Analyse &nbsp;·&nbsp; ✓ Kein Abo nötig &nbsp;·&nbsp; ✓ Premium ab 0,00€/Mo
+                ✓ 1 kostenlose Analyse &nbsp;·&nbsp; ✓ Kein Abo nötig &nbsp;·&nbsp; ✓ Premium ab 5,00€/Mo
             </span>
         </div>
         <div style="text-align:center;margin-top:12px;">
@@ -1106,6 +1106,16 @@ def show_dashboard(user_id, user_email, premium, analyses):
     # Auto-generate if not cached
     if not cached_briefing:
         try:
+            # Wiederholbare Formate (Abschnitt 8) aus der letzten vollständigen Analyse extrahieren,
+            # damit der tägliche Hook wirklich auf der bezahlten Diagnose aufbaut, statt nur auf der Nische zu raten
+            full_analysis_text = latest.get("analysis_text", "") or ""
+            formate_match = re.search(
+                r"##\s*8\..*?(?=##\s*9\.|\Z)", full_analysis_text, re.DOTALL
+            )
+            formate_context = formate_match.group(0).strip() if formate_match else ""
+            if not formate_context:
+                formate_context = "Keine vollständige Analyse mit abgeleiteten Formaten vorhanden — Hook basiert nur auf Nische und Top/Flop-Videos."
+
             briefing_prompt = f"""Du bist ein viraler TikTok-Stratege spezialisiert auf emotionale Hooks und Pattern Interrupts.
 
 ACCOUNT DATEN:
@@ -1116,7 +1126,12 @@ ACCOUNT DATEN:
 - Top Videos (was funktioniert hat): {json.dumps(top_videos[:3], ensure_ascii=False)}
 - Flop Videos (was nicht funktioniert hat): {json.dumps(flop_videos[:3], ensure_ascii=False)}
 
+WIEDERHOLBARE FORMATE AUS DER LETZTEN VOLLANALYSE (das ist die eigentliche Grundlage — der heutige Hook soll eine
+konkrete Instanz von EINEM dieser Formate sein, mit dem Variablen-Slot neu befüllt, nicht ein generischer Hook):
+{formate_context}
+
 HOOK-REGELN — PFLICHT:
+- Wenn oben konkrete Formate mit Variablen-Slot stehen: wähle EINES davon aus (bei jeder Generierung ein anderes, rotierend) und befülle den Slot neu — das ist Pflicht, kein optionaler Kontext
 - Die Account-Nische ist "{latest.get('nische','—')}" — der Hook MUSS thematisch zu DIESER Nische passen, egal ob Sport, Business, Beauty, Comedy, Food, Gaming, Reisen oder irgendetwas anderes
 - NIEMALS informative Hooks ("Hier sind 3 Tipps...")
 - IMMER emotional, unerwartet oder mitten in einer Szene
@@ -1137,12 +1152,13 @@ HOOK-TYPEN als Stilvorbild — wähle den Typ der zur Nische "{latest.get('nisch
 Antworte NUR in exakt diesem Format, keine Abweichungen, kein Intro:
 
 HOOK::[fertiger Hook-Satz, max 12 Wörter, emotional und unerwartet]
+FORMAT_NAME::[Name des verwendeten Formats aus der Analyse, oder "Generisch" falls keins vorhanden]
 ZEIT::[Uhrzeit, z.B. 17:00 Uhr]
 FORMAT::[z.B. 18–25 Sek · schnelle Cuts · authentisch]
 HASHTAGS::[8 Hashtags mit #, durch Leerzeichen getrennt]
 AKTION::[Eine konkrete Sache heute anders machen, max 1 Satz]
 
-Nur diese 5 Zeilen. Kein weiterer Text.
+Nur diese 6 Zeilen. Kein weiterer Text.
 
 (Variations-Anker, nicht erwähnen: {random.choice(['Zweifel','Stolz','Wut','Erschöpfung','Entschlossenheit','Selbstironie','Vorfreude','Einsamkeit','Trotz','Erleichterung'])})"""
 
@@ -1188,6 +1204,7 @@ Nur diese 5 Zeilen. Kein weiterer Text.
                     @{latest.get('username','—')} · {latest.get('nische','—')[:30]}
                 </div>
             </div>
+            {"<div style='font-size:10px;color:rgba(29,158,117,0.7);font-weight:700;letter-spacing:0.05em;margin-bottom:10px;'>📊 AUS DEINER ANALYSE: " + parsed.get('FORMAT_NAME','') + "</div>" if parsed.get("FORMAT_NAME") and parsed.get("FORMAT_NAME") != "Generisch" else ""}
             <div style="font-size:20px;font-weight:700;color:#e8e6e0;line-height:1.3;margin-bottom:20px;">
                 🎣 &nbsp;{parsed.get('HOOK','—')}
             </div>
@@ -2133,7 +2150,7 @@ def show_app():
                 try:
                     checkout_url = create_checkout_session(user_email, user_id)
                     if checkout_url:
-                        st.markdown(f'<div style="text-align:center;"><a href="{checkout_url}" target="_blank"><button style="background:rgba(255,255,255,0.05);color:#e8e6e0;border:0.5px solid rgba(255,255,255,0.1);padding:12px 28px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">Premium — 0,00€/Monat (unlimited) →</button></a></div>', unsafe_allow_html=True)
+                        st.markdown(f'<div style="text-align:center;"><a href="{checkout_url}" target="_blank"><button style="background:rgba(255,255,255,0.05);color:#e8e6e0;border:0.5px solid rgba(255,255,255,0.1);padding:12px 28px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">Premium — 5,00€/Monat (unlimited) →</button></a></div>', unsafe_allow_html=True)
                 except:
                     pass
                 return
@@ -2537,7 +2554,7 @@ def show_app():
                 try:
                     checkout_url = create_checkout_session(user_email, user_id)
                     if checkout_url:
-                        st.markdown(f'<div style="text-align:center;margin-top:8px;"><a href="{checkout_url}" target="_blank"><button style="background:#ff4d4d;color:white;border:none;padding:10px 24px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Premium — 0,00€/Monat (unlimited) →</button></a></div>', unsafe_allow_html=True)
+                        st.markdown(f'<div style="text-align:center;margin-top:8px;"><a href="{checkout_url}" target="_blank"><button style="background:#ff4d4d;color:white;border:none;padding:10px 24px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Premium — 5,00€/Monat (unlimited) →</button></a></div>', unsafe_allow_html=True)
                 except:
                     pass
 
